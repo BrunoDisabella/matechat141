@@ -196,9 +196,16 @@ class WhatsAppService extends EventEmitter {
         if (!client) throw new Error('Client not connected');
 
         // Validation logic
-        if (!to || (!to.endsWith('@c.us') && !to.endsWith('@g.us'))) {
-            if (!to.includes('@')) to = `${to}@c.us`;
+        // Validation logic
+        if (!to) throw new Error('Destination (to) is required');
+
+        // Ensure ID formatting
+        if (!to.includes('@')) {
+            // Basic assumption: if no @, it's a number, so append @c.us
+            to = `${to}@c.us`;
         }
+        // If it has @, we trust it (could be @c.us or @g.us)
+
 
         const chat = await client.getChatById(to);
 
