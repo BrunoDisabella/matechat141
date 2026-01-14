@@ -7,6 +7,7 @@ import { config } from './config/env.js';
 import apiRoutes from './routes/api.js';
 import whatsappService from './services/whatsappService.js';
 import socketService from './services/socketService.js';
+import webhookDispatcher from './services/webhookDispatcher.js';
 
 // Setup paths
 const __filename = fileURLToPath(import.meta.url);
@@ -32,6 +33,7 @@ app.get('*', (req, res) => {
 // Initialize Services
 socketService.initialize(server);
 whatsappService.initializeClient('default-user');
+webhookDispatcher.initialize();
 
 // Start Server
 server.listen(config.port, () => {
