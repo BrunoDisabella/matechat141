@@ -47,6 +47,12 @@ export const updateApiKey = async (req, res) => {
 };
 
 export const getApiKey = async (req, res) => {
-    // Optional: Retrieve current key (masked) if needed, but for now just update.
-    res.json({ success: true, apiKey: process.env.API_KEY || '' });
+    // Return structure matching frontend ApiConfig interface
+    res.json({
+        success: true,
+        apiConfig: {
+            enabled: !!process.env.API_KEY, // If key exists, assume enabled
+            apiKey: process.env.API_KEY || ''
+        }
+    });
 };
