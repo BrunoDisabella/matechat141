@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { io, Socket } from 'socket.io-client';
 import { supabase } from './services/supabase';
 import { Login } from './components/Login';
 import { ChatList } from './components/ChatList';
@@ -8,6 +7,7 @@ import { QRCodeDisplay } from './components/QRCodeDisplay';
 import { Chat, Message, User, ConnectionStatus, QuickReply, Session, Label, ChatLabels, ScheduledMessage } from './types';
 import { blobToBase64 } from './utils/formatters';
 import { ConsoleProvider, useConsole } from './contexts/ConsoleContext';
+import { SocketProvider, useSocket } from './contexts/SocketContext'; // Import Context
 import { Settings, WifiOff, ScanLine } from 'lucide-react'; // Iconos añadidos
 
 // Modales
@@ -21,11 +21,9 @@ import { StatusSchedulerModal } from './components/modals/StatusSchedulerModal';
 const MateChatApp: React.FC = () => {
     const [user, setUser] = useState<User | null>(null);
     const [session, setSession] = useState<Session | null>(null);
-    const [socket, setSocket] = useState<Socket | null>(null);
+    const { socket, status, qrCode, serverError, initializeSocket, resetConnection, disconnectSocket } = useSocket();
 
     // Estados de UI
-    const [status, setStatus] = useState<ConnectionStatus>(ConnectionStatus.DISCONNECTED);
-    const [qrCode, setQrCode] = useState<string | null>(null);
     const [chats, setChats] = useState<Chat[]>([]);
     const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
     const [messages, setMessages] = useState<Record<string, Message[]>>({});
@@ -35,7 +33,6 @@ const MateChatApp: React.FC = () => {
     const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
 
     // Estado de Conexión y Configuración de Servidor
-    const [serverError, setServerError] = useState(false);
     const [customServerUrl, setCustomServerUrl] = useState<string>(() => {
         return localStorage.getItem('matechat_server_url') || '';
     });
@@ -241,71 +238,32 @@ const MateChatApp: React.FC = () => {
     }, [session, fetchQuickReplies, serverError]);
 
 
-    // Socket Connection
+    // Socket Initialization via Context
     useEffect(() => {
         if (!user || !session) return;
-
-        setStatus(ConnectionStatus.CONNECTING);
-        setServerError(false);
-
         const connectionUrl = API_BASE_URL;
-        logEvent('Socket', 'info', 'Iniciando conexión...', connectionUrl);
+        initializeSocket(session.access_token, connectionUrl);
+    }, [user, session, API_BASE_URL, initializeSocket]);
 
-        const newSocket = io(connectionUrl, {
-            auth: { token: session.access_token },
-            transports: ['websocket', 'polling'],
-            reconnectionAttempts: 3, // Limitar intentos para no saturar si la URL está mal
-            timeout: 10000
-        });
+    // Bind Data Events to Socket
+    useEffect(() => {
+        if (!socket) return;
 
-        newSocket.on('connect', () => {
-            logEvent('Socket', 'info', 'Conectado al servidor Socket.IO');
-            setServerError(false);
-            setIsConfiguringServer(false); // Cerrar modal de config si conecta
-            newSocket.emit('client-ready');
-            newSocket.emit('get-all-labels');
-        });
-
-        newSocket.on('connect_error', (err) => {
-            logEvent('Socket', 'error', 'Error de conexión websocket', err.message);
-            setServerError(true);
-        });
-
-        newSocket.on('connected', (isConnected: boolean) => {
-            if (isConnected) {
-                setStatus(ConnectionStatus.CONNECTED);
-                setQrCode(null);
-                setShowQrModal(false);
-                logEvent('WhatsApp', 'info', 'Cliente de WhatsApp listo');
-            } else {
-                setStatus(ConnectionStatus.QR_READY);
-                logEvent('WhatsApp', 'warn', 'Esperando escaneo de QR');
-            }
-        });
-
-        newSocket.on('qr', (qr: string) => {
-            setStatus(ConnectionStatus.QR_READY);
-            setQrCode(qr);
-            logEvent('WhatsApp', 'info', 'Nuevo código QR recibido');
-        });
-
-        newSocket.on('chats', (incomingChats: Chat[]) => {
+        socket.on('chats', (incomingChats: Chat[]) => {
             setChats(incomingChats);
             logEvent('WhatsApp', 'info', `Recibidos ${incomingChats.length} chats`);
         });
 
-        newSocket.on('chat-history', ({ chatId, messages: history }: { chatId: string, messages: Message[] }) => {
+        socket.on('chat-history', ({ chatId, messages: history }: { chatId: string, messages: Message[] }) => {
             const sortedHistory = [...history].sort((a, b) => a.timestamp - b.timestamp);
             setMessages(prev => ({ ...prev, [chatId]: sortedHistory }));
             setLoadingHistory(false);
             logEvent('Chat', 'info', `Historial cargado para ${chatId}`);
         });
 
-        // Nuevo: Recibir más mensajes paginados
-        newSocket.on('more-messages-loaded', ({ chatId, messages: newMessages }: { chatId: string, messages: Message[] }) => {
+        socket.on('more-messages-loaded', ({ chatId, messages: newMessages }: { chatId: string, messages: Message[] }) => {
             setMessages(prev => {
                 const currentMessages = prev[chatId] || [];
-                // Filtrar duplicados (por si acaso) y ordenar
                 const existingIds = new Set(currentMessages.map(m => m.id));
                 const uniqueNew = newMessages.filter(m => !existingIds.has(m.id));
 
@@ -318,11 +276,11 @@ const MateChatApp: React.FC = () => {
             logEvent('Chat', 'info', `Cargados ${newMessages.length} mensajes antiguos para ${chatId}`);
         });
 
-        newSocket.on('scheduled-messages', ({ chatId, messages }) => {
+        socket.on('scheduled-messages', ({ chatId, messages }) => {
             setScheduledMessages(prev => ({ ...prev, [chatId]: messages }));
         });
 
-        newSocket.on('new-message', (msg: Message & { chatId: string }) => {
+        socket.on('new-message', (msg: Message & { chatId: string }) => {
             setChats(prevChats => prevChats.map(c => {
                 if (c.id === msg.chatId) {
                     return {
@@ -344,7 +302,7 @@ const MateChatApp: React.FC = () => {
             else logEvent('Chat', 'info', 'Nuevo mensaje recibido', msg.id);
         });
 
-        newSocket.on('message-media-update', ({ chatId, messageId, media }) => {
+        socket.on('message-media-update', ({ chatId, messageId, media }) => {
             setMessages(prev => {
                 const chatMsgs = prev[chatId] || [];
                 return {
@@ -354,24 +312,30 @@ const MateChatApp: React.FC = () => {
             });
         });
 
-        newSocket.on('chat-profile-pic-update', ({ chatId, profilePicUrl }) => {
+        socket.on('chat-profile-pic-update', ({ chatId, profilePicUrl }) => {
             setChats(prev => prev.map(c => c.id === chatId ? { ...c, profilePicUrl } : c));
         });
 
-        newSocket.on('all-labels', (serverLabels: Label[]) => {
+        socket.on('all-labels', (serverLabels: Label[]) => {
             setLabels(serverLabels);
         });
 
-        newSocket.on('chat-labels-updated', (data: ChatLabels) => {
+        socket.on('chat-labels-updated', (data: ChatLabels) => {
             setChatLabels(data);
         });
 
-        setSocket(newSocket);
-
         return () => {
-            newSocket.disconnect();
+            socket.off('chats');
+            socket.off('chat-history');
+            socket.off('more-messages-loaded');
+            socket.off('scheduled-messages');
+            socket.off('new-message');
+            socket.off('message-media-update');
+            socket.off('chat-profile-pic-update');
+            socket.off('all-labels');
+            socket.off('chat-labels-updated');
         };
-    }, [user, session, logEvent, API_BASE_URL]); // Re-conectar si cambia la URL base
+    }, [socket, selectedChatId, logEvent]);
 
     const handleSelectChat = (chatId: string) => {
         setSelectedChatId(chatId);
@@ -498,22 +462,14 @@ const MateChatApp: React.FC = () => {
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
-        if (socket) socket.disconnect();
+        disconnectSocket();
         setUser(null);
         setSession(null);
     };
 
     const handleResetConnection = () => {
-        if (socket) {
-            console.log('Enviando solicitud reset-session al servidor...');
-            logEvent('Auth', 'warn', 'Solicitando reinicio de sesión de WhatsApp...');
-            setQrCode(null);
-            setStatus(ConnectionStatus.CONNECTING);
-            socket.emit('reset-session');
-            setShowQrModal(true); // Mostrar QR si reiniciamos
-        } else {
-            console.error('No se pudo resetear: Socket no conectado');
-        }
+        resetConnection();
+        setShowQrModal(true);
     };
 
     const handleSaveServerUrl = (url: string) => {
@@ -728,7 +684,9 @@ const MateChatApp: React.FC = () => {
 
 const App: React.FC = () => (
     <ConsoleProvider>
-        <MateChatApp />
+        <SocketProvider>
+            <MateChatApp />
+        </SocketProvider>
     </ConsoleProvider>
 );
 
