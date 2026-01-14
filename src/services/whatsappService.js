@@ -126,20 +126,28 @@ class WhatsAppService extends EventEmitter {
     async getChats(userId) {
         const client = this.clients.get(userId);
         if (!client) throw new Error('Client not initialized');
-        const chats = await client.getChats();
 
-        return chats.map(c => ({
-            id: c.id._serialized,
-            name: c.name || c.id.user,
-            isGroup: c.isGroup,
-            unreadCount: c.unreadCount,
-            lastMessage: c.lastMessage ? {
-                body: c.lastMessage.body,
-                timestamp: c.lastMessage.timestamp,
-                fromMe: c.lastMessage.fromMe,
-                hasMedia: c.lastMessage.hasMedia
-            } : null
-        }));
+        // Safety check: sometimes client exists but pupPage is not ready
+        if (!client.pupPage) throw new Error('Client page not ready');
+
+        try {
+            const chats = await client.getChats();
+            return chats.map(c => ({
+                id: c.id._serialized,
+                name: c.name || c.id.user,
+                isGroup: c.isGroup,
+                unreadCount: c.unreadCount,
+                lastMessage: c.lastMessage ? {
+                    body: c.lastMessage.body,
+                    timestamp: c.lastMessage.timestamp,
+                    fromMe: c.lastMessage.fromMe,
+                    hasMedia: c.lastMessage.hasMedia
+                } : null
+            }));
+        } catch (error) {
+            console.error('Safe getChats failed:', error);
+            return [];
+        }
     }
 
     async getChatMessages(userId, chatId, limit = 50) {

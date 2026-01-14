@@ -67,11 +67,16 @@ class SocketService {
         socket.on('client-ready', async () => {
             try {
                 if (whatsappService.getClient(userId)) {
-                    const chats = await whatsappService.getChats(userId);
-                    socket.emit('chats', chats);
+                    try {
+                        const chats = await whatsappService.getChats(userId);
+                        socket.emit('chats', chats);
 
-                    const labels = await whatsappService.getLabels(userId);
-                    socket.emit('all-labels', labels);
+                        const labels = await whatsappService.getLabels(userId);
+                        socket.emit('all-labels', labels);
+                    } catch (innerError) {
+                        console.error('Client connected but not ready for data fetch:', innerError.message);
+                        // Optional: emit a retry signal or partial state
+                    }
                 }
             } catch (e) {
                 console.error('Error fetching initial data:', e);
