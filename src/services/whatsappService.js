@@ -247,21 +247,17 @@ class WhatsAppService extends EventEmitter {
 
         const chat = await client.getChatById(to);
 
-        // HACK: Monkey patch sendSeen to avoid crash if called internally by sendMessage
-        // The current version of wwebjs tries to mark unread and fails.
-        chat.sendSeen = async () => { return true; };
-
         // Media Handling
         if (media && media.base64) {
             const mime = media.mimetype || media.mime || 'application/octet-stream';
             const msgMedia = new MessageMedia(mime, media.base64, media.filename);
-            const options = {};
+            const options = { sendSeen: false }; // Fix: Disable sendSeen to prevent crash
             if (isVoiceMessage) options.sendAudioAsVoice = true;
             if (text) options.caption = text;
 
             return await chat.sendMessage(msgMedia, options);
         } else if (text) {
-            return await chat.sendMessage(text);
+            return await chat.sendMessage(text, { sendSeen: false }); // Fix: Disable sendSeen to prevent crash
         }
     }
 
