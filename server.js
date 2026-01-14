@@ -1,11 +1,17 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
-const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import pkg from 'whatsapp-web.js';
+const { Client, LocalAuth, MessageMedia } = pkg;
+// import qrcode from 'qrcode-terminal'; // No se usa en producción normalmente, pero si se necesita: import qrcode from 'qrcode-terminal';
+import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Configuración para __dirname en ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const server = http.createServer(app);
@@ -331,5 +337,5 @@ app.post('/api/send-message', authenticateApiKeyOnly, async (req, res) => {
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get(/.*/, (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
