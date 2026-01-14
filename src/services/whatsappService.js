@@ -38,7 +38,14 @@ class WhatsAppService extends EventEmitter {
             }),
             puppeteer: {
                 headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--no-zygote',
+                    '--single-process',
+                    '--disable-gpu'
+                ]
             }
         });
 
@@ -135,12 +142,30 @@ class WhatsAppService extends EventEmitter {
         return this.clients.get(userId);
     }
 
-    async getChats(userId) {
+    async getChats(userId, retries = 3) {
         const client = this.clients.get(userId);
         if (!client) throw new Error('Client not initialized');
 
         // Safety check: sometimes client exists but pupPage is not ready
         if (!client.pupPage) throw new Error('Client page not ready');
+
+        // Wait for Store to be injected
+        try {
+            await client.pupPage.waitForFunction(() => {
+                return window.Store && window.Store.Chat && window.Store.Msg;
+            }, { timeout: 5000 });
+        } catch (e) {
+            console.warn('[WA-SERVICE] Store injection wait timed out, attempting anyway...');
+        }
+
+        // Wait for Store to be injected
+        try {
+            await client.pupPage.waitForFunction(() => {
+                return window.Store && window.Store.Chat && window.Store.Msg;
+            }, { timeout: 5000 });
+        } catch (e) {
+            console.warn('[WA-SERVICE] Store injection wait timed out, attempting anyway...');
+        }
 
         try {
             const chats = await client.getChats();
@@ -157,7 +182,12 @@ class WhatsAppService extends EventEmitter {
                 } : null
             }));
         } catch (error) {
-            console.error('Safe getChats failed:', error);
+            if (retries > 0) {
+                console.warn(`[WA-SERVICE] getChats failed, retrying... (${retries} left)`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                return this.getChats(userId, retries - 1);
+            }
+            console.error('Safe getChats failed after retries:', error);
             return [];
         }
     }
