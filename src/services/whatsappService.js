@@ -70,6 +70,9 @@ class WhatsAppService extends EventEmitter {
 
         client.on('authenticated', () => {
             console.log(`[WA-${userId}] Authenticated`);
+            // Usually 'ready' comes after, but 'authenticated' means we are logged in.
+            // We can treat this as partially ready or wait for full ready.
+            // For UI unblocking, 'ready' is safer for data, but 'authenticated' means QR is gone.
             this.emit('authenticated', { userId });
         });
 
@@ -200,7 +203,7 @@ class WhatsAppService extends EventEmitter {
         const chat = await client.getChatById(to);
 
         // SendSeen Safe
-        try { await chat.sendSeen(); } catch (e) { }
+        // try { await chat.sendSeen(); } catch (e) { console.warn('Ignore sendSeen', e.message); }
 
         // Media Handling
         if (media && media.base64) {
