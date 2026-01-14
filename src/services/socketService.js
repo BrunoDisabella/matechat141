@@ -90,11 +90,11 @@ class SocketService {
                 const messages = await whatsappService.getChatMessages(userId, chatId);
                 socket.emit('chat-history', { chatId, messages });
 
-                // Mark as seen
+                // Mark as seen - DISABLED due to wwebjs bug (markedUnread)
                 const client = whatsappService.getClient(userId);
                 if (client) {
                     const chat = await client.getChatById(chatId);
-                    chat.sendSeen().catch(() => { });
+                    // chat.sendSeen().catch(() => { }); 
                 }
             } catch (e) {
                 console.error('Error selecting chat:', e);

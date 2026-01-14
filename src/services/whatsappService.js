@@ -247,8 +247,9 @@ class WhatsAppService extends EventEmitter {
 
         const chat = await client.getChatById(to);
 
-        // SendSeen Safe
-        // try { await chat.sendSeen(); } catch (e) { console.warn('Ignore sendSeen', e.message); }
+        // HACK: Monkey patch sendSeen to avoid crash if called internally by sendMessage
+        // The current version of wwebjs tries to mark unread and fails.
+        chat.sendSeen = async () => { return true; };
 
         // Media Handling
         if (media && media.base64) {
