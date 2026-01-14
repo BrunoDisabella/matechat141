@@ -26,7 +26,7 @@ app.use('/api', apiRoutes);
 
 // Frontend Static Files
 app.use(express.static(path.join(PROJECT_ROOT, 'dist')));
-app.get('*', (req, res) => {
+app.get(/.*/, (req, res) => {
     res.sendFile(path.join(PROJECT_ROOT, 'dist', 'index.html'));
 });
 
