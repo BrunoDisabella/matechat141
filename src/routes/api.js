@@ -1,11 +1,15 @@
 import express from 'express';
 import { authenticateApiKeyOnly } from '../middlewares/authMiddleware.js';
 import * as whatsappController from '../controllers/whatsappController.js';
-import * as webhookController from '../controllers/webhookController.js';
+import * as configController from '../controllers/configController.js';
 
 const router = express.Router();
 
 router.use(authenticateApiKeyOnly);
+
+// Config
+router.post('/config/api-key', configController.updateApiKey);
+router.get('/config/api-key', configController.getApiKey);
 
 // WhatsApp
 router.post('/send-message', whatsappController.sendMessage);
