@@ -1,6 +1,7 @@
 import express from 'express';
 import { authenticateApiKeyOnly } from '../middlewares/authMiddleware.js';
 import * as whatsappController from '../controllers/whatsappController.js';
+import * as webhookController from '../controllers/webhookController.js';
 import * as configController from '../controllers/configController.js';
 
 const router = express.Router();
