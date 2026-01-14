@@ -9,8 +9,8 @@ const router = express.Router();
 router.use(authenticateApiKeyOnly);
 
 // Config
-router.post('/config/api-key', configController.updateApiKey);
-router.get('/config/api-key', configController.getApiKey);
+router.post('/api-key', configController.updateApiKey);
+router.get('/api-key', configController.getApiKey);
 
 // WhatsApp
 router.post('/send-message', whatsappController.sendMessage);

@@ -21,6 +21,14 @@ const server = http.createServer(app);
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
+// Debug logging for API requests
+app.use((req, res, next) => {
+    if (req.path.startsWith('/api')) {
+        console.log(`[API_REQ] ${req.method} ${req.path}`);
+    }
+    next();
+});
+
 // API Routes
 app.use('/api', apiRoutes);
 
