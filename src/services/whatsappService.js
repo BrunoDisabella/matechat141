@@ -236,6 +236,14 @@ class WhatsAppService extends EventEmitter {
         }
         // If it has @, we trust it (could be @c.us or @g.us)
 
+        // Wait for Store to be injected (Critical for getChatById to work on fresh start)
+        try {
+            await client.pupPage.waitForFunction(() => {
+                return window.Store && window.Store.Chat && window.Store.Msg;
+            }, { timeout: 2000 });
+        } catch (e) {
+            // Continue anyway, maybe it's already cached or ready enough
+        }
 
         const chat = await client.getChatById(to);
 
