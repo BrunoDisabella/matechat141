@@ -31,7 +31,7 @@ const authenticateApiKeyOnly = (req, res, next) => {
         console.warn(`[AUTH] Intento de acceso denegado. Key recibida: ${apiKey}`);
         // En un entorno estricto, aquí devolveríamos 401.
     }
-    req.userId = 'default-user'; 
+    req.userId = 'default-user';
     next();
 };
 
@@ -51,7 +51,7 @@ const initializeClient = (userId, socket = null) => {
     }
 
     console.log(`[INIT] Inicializando cliente para ${userId}...`);
-    
+
     const client = new Client({
         authStrategy: new LocalAuth({ clientId: userId }),
         puppeteer: {
@@ -76,7 +76,7 @@ const initializeClient = (userId, socket = null) => {
         console.log('[AUTH] Autenticado correctamente');
         io.emit('connected', true);
     });
-    
+
     client.on('auth_failure', () => {
         console.error('[AUTH] Fallo de autenticación');
         io.emit('connected', false);
@@ -86,7 +86,7 @@ const initializeClient = (userId, socket = null) => {
         try {
             const chat = await msg.getChat();
             const contact = await msg.getContact();
-            
+
             io.emit('new-message', {
                 id: msg.id.id,
                 body: msg.body,
@@ -128,29 +128,29 @@ initializeClient('default-user');
 io.on('connection', (socket) => {
     console.log('[SOCKET] Frontend conectado');
     const client = clients.get('default-user');
-    
+
     if (client) {
         client.getState().then(state => {
-            if(state === 'CONNECTED') socket.emit('connected', true);
-        }).catch(() => {});
+            if (state === 'CONNECTED') socket.emit('connected', true);
+        }).catch(() => { });
     }
 
     socket.on('client-ready', () => {
-         if (client) {
-             client.getChats().then(chats => {
-                 const formatted = chats.map(c => ({
-                     id: c.id._serialized,
-                     name: c.name || c.id.user,
-                     isGroup: c.isGroup,
-                     unreadCount: c.unreadCount,
-                     lastMessage: c.lastMessage ? {
-                         body: c.lastMessage.body,
-                         timestamp: c.lastMessage.timestamp
-                     } : null
-                 }));
-                 socket.emit('chats', formatted);
-             }).catch(console.error);
-         }
+        if (client) {
+            client.getChats().then(chats => {
+                const formatted = chats.map(c => ({
+                    id: c.id._serialized,
+                    name: c.name || c.id.user,
+                    isGroup: c.isGroup,
+                    unreadCount: c.unreadCount,
+                    lastMessage: c.lastMessage ? {
+                        body: c.lastMessage.body,
+                        timestamp: c.lastMessage.timestamp
+                    } : null
+                }));
+                socket.emit('chats', formatted);
+            }).catch(console.error);
+        }
     });
 
     socket.on('select-chat', async (chatId) => {
@@ -158,7 +158,7 @@ io.on('connection', (socket) => {
         try {
             const chat = await client.getChatById(chatId);
             const messages = await chat.fetchMessages({ limit: 50 });
-            
+
             const formattedMsgs = messages.map(m => ({
                 id: m.id.id,
                 body: m.body,
@@ -168,12 +168,12 @@ io.on('connection', (socket) => {
                 hasMedia: m.hasMedia,
                 media: null
             }));
-            
+
             socket.emit('chat-history', { chatId, messages: formattedMsgs });
-            
+
             // INTENTO SEGURO DE MARCAR COMO VISTO
             try {
-                await chat.sendSeen(); 
+                await chat.sendSeen();
             } catch (e) {
                 // Error ignorado intencionalmente para evitar crash
             }
@@ -182,7 +182,7 @@ io.on('connection', (socket) => {
             console.error('[CHAT_HISTORY] Error:', e);
         }
     });
-    
+
     socket.on('send-message', async (payload) => {
         try {
             await handleSendMessageLogic(client, payload);
@@ -195,7 +195,7 @@ io.on('connection', (socket) => {
 // --- Lógica Centralizada de Envío (ROBUSTA) ---
 async function handleSendMessageLogic(client, { to, text, audioBase64, audioMime, isVoiceMessage, media }) {
     if (!client) throw new Error('Cliente no inicializado');
-    
+
     // Validar el ID del chat
     if (!to || (!to.endsWith('@c.us') && !to.endsWith('@g.us'))) {
         console.warn(`[SEND] ChatID sospechoso: ${to}. Intentando corregir...`);
@@ -203,7 +203,7 @@ async function handleSendMessageLogic(client, { to, text, audioBase64, audioMime
     }
 
     const chat = await client.getChatById(to);
-    
+
     // --- FIX CRÍTICO: sendSeen protegido ---
     // Esto evita que el servidor falle si la librería tiene problemas con "markedUnread"
     try {
@@ -216,7 +216,7 @@ async function handleSendMessageLogic(client, { to, text, audioBase64, audioMime
     // 1. Envío de Multimedia (Soporte extendido para n8n)
     if (audioBase64 || (media && media.base64)) {
         const base64Data = audioBase64 || media.base64;
-        
+
         // n8n a veces envía 'mimeType', 'mimetype' o 'mime'. Soportamos todos.
         const mime = audioMime || media.mimetype || media.mimeType || media.mime || 'application/octet-stream';
         const filename = media ? media.filename : undefined;
@@ -224,13 +224,13 @@ async function handleSendMessageLogic(client, { to, text, audioBase64, audioMime
         console.log(`[SEND] Enviando media: ${mime} (${filename || 'sin nombre'})`);
 
         const msgMedia = new MessageMedia(mime, base64Data, filename);
-        
+
         const options = {};
         if (isVoiceMessage) options.sendAudioAsVoice = true;
         if (text) options.caption = text;
 
         return await chat.sendMessage(msgMedia, options);
-    } 
+    }
     // 2. Envío de Texto Puro
     else if (text) {
         console.log(`[SEND] Enviando texto a ${to}`);
@@ -247,11 +247,11 @@ app.get('/api/labels', authenticateApiKeyOnly, async (req, res) => {
     try {
         const client = clients.get(req.userId);
         if (!client) return res.status(503).json({ success: false, error: 'No conectado' });
-        
+
         const labels = await client.getLabels();
-        res.json({ 
-            success: true, 
-            labels: labels.map(l => ({ id: l.id, name: l.name, color: l.color })) 
+        res.json({
+            success: true,
+            labels: labels.map(l => ({ id: l.id, name: l.name, color: l.color }))
         });
     } catch (e) {
         res.status(500).json({ success: false, error: e.message });
@@ -266,10 +266,10 @@ app.post('/api/labels/assign', authenticateApiKeyOnly, async (req, res) => {
 
         const client = clients.get(req.userId);
         const allLabels = await client.getLabels();
-        
+
         // Buscar etiqueta por ID (exacto) o por Nombre (insensible a mayúsculas)
         let target = allLabels.find(l => l.id === label || l.name.toLowerCase().trim() === label.toString().toLowerCase().trim());
-        
+
         // Si no se encuentra por nombre y es un número, asumir que es un ID directo
         if (!target && !isNaN(label)) target = { id: label };
 
@@ -277,7 +277,7 @@ app.post('/api/labels/assign', authenticateApiKeyOnly, async (req, res) => {
 
         const chat = await client.getChatById(chatId);
         await chat.addLabels([target.id]);
-        
+
         console.log(`[LABEL] Etiqueta '${target.name || label}' asignada a ${chatId}`);
         res.json({ success: true, message: 'Etiqueta asignada' });
     } catch (e) {
@@ -292,7 +292,7 @@ app.post('/api/labels/remove', authenticateApiKeyOnly, async (req, res) => {
         const { chatId, label } = req.body;
         const client = clients.get(req.userId);
         const allLabels = await client.getLabels();
-        
+
         let target = allLabels.find(l => l.id === label || l.name.toLowerCase().trim() === label.toString().toLowerCase().trim());
         if (!target && !isNaN(label)) target = { id: label };
 
@@ -317,11 +317,11 @@ app.post('/api/send-message', authenticateApiKeyOnly, async (req, res) => {
         if (!client) return res.status(503).json({ success: false, error: 'WhatsApp no conectado' });
 
         // Ejecutar lógica de envío (con protecciones incluidas)
-        const responseMsg = await handleSendMessageLogic(client, { 
-            to: chatId, 
-            text, 
-            media, 
-            isVoiceMessage 
+        const responseMsg = await handleSendMessageLogic(client, {
+            to: chatId,
+            text,
+            media,
+            isVoiceMessage
         });
 
         res.json({ success: true, messageId: responseMsg.id._serialized });
@@ -337,5 +337,5 @@ app.post('/api/send-message', authenticateApiKeyOnly, async (req, res) => {
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get(/.*/, (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
