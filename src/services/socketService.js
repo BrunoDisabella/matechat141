@@ -52,16 +52,18 @@ class SocketService {
     }
 
     _handleConnection(socket, userId) {
-        const client = whatsappService.getClient(userId);
-
-        // Initial state
-        if (client) {
-            client.getState().then(state => {
-                if (state === 'CONNECTED') socket.emit('connected', true);
-            }).catch(() => { });
+        // Immediate check using local state
+        if (whatsappService.isClientReady(userId)) {
+            socket.emit('connected', true);
         } else {
-            // If client is dead/null, it might be in QR mode
-            socket.emit('connected', false);
+            // Check if client exists but maybe not ready yet
+            const client = whatsappService.getClient(userId);
+            if (!client) {
+                socket.emit('connected', false);
+            }
+            // If client exists but not ready, we wait for 'ready' event.
+            // But we can check if it IS connected via puppeteer as backup if we really want,
+            // but relying on events is safer to avoid blocking.
         }
 
         socket.on('client-ready', async () => {

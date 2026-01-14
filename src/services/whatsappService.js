@@ -16,6 +16,11 @@ class WhatsAppService extends EventEmitter {
     constructor() {
         super();
         this.clients = new Map();
+        this.readyUserIds = new Set();
+    }
+
+    isClientReady(userId) {
+        return this.readyUserIds.has(userId);
     }
 
     initializeClient(userId) {
@@ -24,6 +29,7 @@ class WhatsAppService extends EventEmitter {
         }
 
         console.log(`[WA-SERVICE] Initializing client for ${userId}...`);
+        this.readyUserIds.delete(userId);
 
         const client = new Client({
             authStrategy: new LocalAuth({
@@ -58,6 +64,7 @@ class WhatsAppService extends EventEmitter {
 
         client.on('ready', () => {
             console.log(`[WA-${userId}] Ready`);
+            this.readyUserIds.add(userId);
             this.emit('ready', { userId });
         });
 
@@ -68,6 +75,7 @@ class WhatsAppService extends EventEmitter {
 
         client.on('auth_failure', (msg) => {
             console.error(`[WA-${userId}] Auth Failure:`, msg);
+            this.readyUserIds.delete(userId);
             this.emit('auth_failure', { userId });
         });
 
@@ -114,6 +122,7 @@ class WhatsAppService extends EventEmitter {
         // Disconnect event?
         client.on('disconnected', (reason) => {
             console.log(`[WA-${userId}] Disconnected:`, reason);
+            this.readyUserIds.delete(userId);
             this.emit('disconnected', { userId });
             this.clients.delete(userId);
         });
