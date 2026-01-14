@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import pkg from 'whatsapp-web.js';
 const { Client, LocalAuth, MessageMedia } = pkg;
 // import qrcode from 'qrcode-terminal'; // No se usa en producción normalmente, pero si se necesita: import qrcode from 'qrcode-terminal';
+import QRCode from 'qrcode';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
@@ -64,7 +65,13 @@ const initializeClient = (userId, socket = null) => {
 
     client.on('qr', (qr) => {
         console.log('[QR] Nuevo código QR generado');
-        io.emit('qr', qr);
+        QRCode.toDataURL(qr, (err, url) => {
+            if (err) {
+                console.error('Error generando QR image', err);
+                return;
+            }
+            io.emit('qr', url);
+        });
     });
 
     client.on('ready', () => {
