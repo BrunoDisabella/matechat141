@@ -190,6 +190,30 @@ io.on('connection', (socket) => {
             console.error('[SOCKET_SEND] Error:', e);
         }
     });
+
+    socket.on('reset-session', async () => {
+        console.log('[SOCKET] Solicitud de reset-session recibida via Socket');
+        const client = clients.get('default-user');
+        if (client) {
+            console.log('[RESET] Destruyendo cliente...');
+            try {
+                await client.destroy();
+            } catch (e) { console.error('Error destruyendo cliente:', e); }
+            clients.delete('default-user');
+        }
+
+        // Borrar carpeta de sesión
+        const sessionPath = path.join(__dirname, '.wwebjs_auth');
+        if (fs.existsSync(sessionPath)) {
+            console.log('[RESET] Borrando carpeta de sesión...');
+            fs.rmSync(sessionPath, { recursive: true, force: true });
+        }
+
+        // Reiniciar
+        console.log('[RESET] Reiniciando cliente...');
+        initializeClient('default-user');
+        // Notificar que se ha reseteado? El init enviará eventos.
+    });
 });
 
 // --- Lógica Centralizada de Envío (ROBUSTA) ---
@@ -302,6 +326,34 @@ app.post('/api/labels/remove', authenticateApiKeyOnly, async (req, res) => {
         await chat.removeLabels([target.id]);
         res.json({ success: true });
     } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// --- API: Logout / Disconnect ---
+app.post('/api/logout', authenticateApiKeyOnly, async (req, res) => {
+    try {
+        const client = clients.get(req.userId);
+        if (client) {
+            await client.destroy();
+            clients.delete(req.userId);
+
+            // Borrar carpeta de sesión local si existe
+            const sessionPath = path.join(__dirname, '.wwebjs_auth');
+            if (fs.existsSync(sessionPath)) {
+                fs.rmSync(sessionPath, { recursive: true, force: true });
+            }
+
+            // Reiniciar cliente para generar nuevo QR
+            initializeClient(req.userId);
+
+            console.log(`[LOGOUT] Cliente desconectado y reiniciado.`);
+            res.json({ success: true, message: 'Sesión cerrada y reseteada.' });
+        } else {
+            res.status(404).json({ success: false, error: 'No hay sesión activa para cerrar.' });
+        }
+    } catch (e) {
+        console.error('[LOGOUT_ERROR]', e);
         res.status(500).json({ success: false, error: e.message });
     }
 });
