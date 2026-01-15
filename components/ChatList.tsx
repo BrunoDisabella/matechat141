@@ -170,9 +170,6 @@ export const ChatList: React.FC<ChatListProps> = ({
     onOpenWebhooksModal,
     onOpenQuickRepliesModal,
     onOpenStatusModal,
-    onOpenWebhooksModal,
-    onOpenQuickRepliesModal,
-    onOpenStatusModal,
     onResetConnection,
     userEmail
 }) => {
