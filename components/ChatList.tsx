@@ -170,7 +170,11 @@ export const ChatList: React.FC<ChatListProps> = ({
     onOpenWebhooksModal,
     onOpenQuickRepliesModal,
     onOpenStatusModal,
-    onResetConnection
+    onOpenWebhooksModal,
+    onOpenQuickRepliesModal,
+    onOpenStatusModal,
+    onResetConnection,
+    userEmail
 }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [activeFilters, setActiveFilters] = useState<string[]>([]);
