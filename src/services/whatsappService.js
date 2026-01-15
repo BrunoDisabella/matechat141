@@ -255,14 +255,26 @@ class WhatsAppService extends EventEmitter {
             console.log(`[WA-SERVICE] Filename: ${media.filename}`);
 
             const mime = media.mimetype || media.mime || 'application/octet-stream';
-            // Ensure base64 doesn't have data: prefix
+            // Ensure base64 doesn't have data: prefix and is clean
             let base64Data = media.base64;
             if (base64Data.startsWith('data:')) {
                 console.log('[WA-SERVICE] Removing data URI prefix from base64');
                 base64Data = base64Data.split(',')[1];
             }
+            // Remove any newlines or whitespace that might corrupt the base64 string
+            base64Data = base64Data.replace(/\s/g, '');
 
-            const msgMedia = new MessageMedia(mime, base64Data, media.filename);
+            console.log(`[WA-SERVICE] Base64 Start (First 20 chars): ${base64Data.substring(0, 20)}...`);
+
+            // Ensure filename exists
+            let filename = media.filename;
+            if (!filename) {
+                const ext = mime.split('/')[1] || 'bin';
+                filename = `file_${Date.now()}.${ext}`;
+                console.log(`[WA-SERVICE] Filename was undefined, generated: ${filename}`);
+            }
+
+            const msgMedia = new MessageMedia(mime, base64Data, filename);
 
             const options = { sendSeen: false };
             if (isVoiceMessage) {
