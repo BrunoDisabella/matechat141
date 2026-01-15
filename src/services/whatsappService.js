@@ -341,6 +341,32 @@ class WhatsAppService extends EventEmitter {
         // Re-init
         this.initializeClient(userId);
     }
+
+    /**
+     * Scan .wwebjs_auth directory for existing sessions and restore them
+     * This allows the bot to start working in background without browser interaction
+     */
+    restoreSessions() {
+        const authPath = path.join(PROJECT_ROOT, '.wwebjs_auth');
+        if (!fs.existsSync(authPath)) {
+            console.log('[WA-SERVICE] No auth folder found. Skipping restore.');
+            return;
+        }
+
+        console.log('[WA-SERVICE] Scanning for existing sessions...');
+        try {
+            const files = fs.readdirSync(authPath);
+            files.forEach(file => {
+                if (file.startsWith('session-')) {
+                    const userId = file.replace('session-', '');
+                    console.log(`[WA-SERVICE] Found session for ${userId}, restoring...`);
+                    this.initializeClient(userId);
+                }
+            });
+        } catch (e) {
+            console.error('[WA-SERVICE] Error restoring sessions:', e);
+        }
+    }
 }
 
 export default new WhatsAppService();
