@@ -249,15 +249,40 @@ class WhatsAppService extends EventEmitter {
 
         // Media Handling
         if (media && media.base64) {
+            console.log('[WA-SERVICE] Sending Media Message');
+            console.log(`[WA-SERVICE] Mime: ${media.mimetype || media.mime}`);
+            console.log(`[WA-SERVICE] Base64 Length: ${media.base64.length}`);
+            console.log(`[WA-SERVICE] Filename: ${media.filename}`);
+
             const mime = media.mimetype || media.mime || 'application/octet-stream';
-            const msgMedia = new MessageMedia(mime, media.base64, media.filename);
-            const options = { sendSeen: false }; // Fix: Disable sendSeen to prevent crash
-            if (isVoiceMessage) options.sendAudioAsVoice = true;
+            // Ensure base64 doesn't have data: prefix
+            let base64Data = media.base64;
+            if (base64Data.startsWith('data:')) {
+                console.log('[WA-SERVICE] Removing data URI prefix from base64');
+                base64Data = base64Data.split(',')[1];
+            }
+
+            const msgMedia = new MessageMedia(mime, base64Data, media.filename);
+
+            const options = { sendSeen: false };
+            if (isVoiceMessage) {
+                options.sendAudioAsVoice = true;
+                console.log('[WA-SERVICE] Sending as Voice Message');
+            }
             if (text) options.caption = text;
 
-            return await chat.sendMessage(msgMedia, options);
+            console.log('[WA-SERVICE] Dispatching to chat.sendMessage...');
+            try {
+                const result = await chat.sendMessage(msgMedia, options);
+                console.log('[WA-SERVICE] Message Sent Successfully:', result.id._serialized);
+                return result;
+            } catch (mediaError) {
+                console.error('[WA-SERVICE] Error sending media:', mediaError);
+                throw mediaError;
+            }
         } else if (text) {
-            return await chat.sendMessage(text, { sendSeen: false }); // Fix: Disable sendSeen to prevent crash
+            console.log('[WA-SERVICE] Sending Text Message');
+            return await chat.sendMessage(text, { sendSeen: false });
         }
     }
 
