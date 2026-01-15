@@ -141,6 +141,7 @@ interface ChatListProps {
     selectedChatId: string | null;
     onSelectChat: (id: string) => void;
     loading: boolean;
+    userEmail?: string; // Nuevo prop
 
     // Props de Sidebar Legacy
     allLabels: Label[];
@@ -238,8 +239,13 @@ export const ChatList: React.FC<ChatListProps> = ({
 
             {/* Header del Sidebar */}
             <div className="bg-[#f0f2f5] p-3 py-2.5 flex justify-between items-center h-[60px] shrink-0 px-4 border-b border-gray-200">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 overflow-hidden">
                     <Avatar name="Me" size="md" />
+                    {userEmail && (
+                        <span className="text-xs text-gray-500 font-medium truncate max-w-[150px]" title={userEmail}>
+                            {userEmail}
+                        </span>
+                    )}
                     <button
                         onClick={onOpenStatusModal}
                         className="p-2 rounded-full hover:bg-gray-200 text-[#54656f] transition-colors"

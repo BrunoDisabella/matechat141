@@ -40,7 +40,7 @@ app.get(/.*/, (req, res) => {
 
 // Initialize Services
 socketService.initialize(server);
-whatsappService.initializeClient('default-user');
+// whatsappService.initializeClient('default-user'); // Removed: Multi-tenancy enabled, initialized via socket
 webhookDispatcher.initialize();
 
 // Start Server

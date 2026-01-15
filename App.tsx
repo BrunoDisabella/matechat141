@@ -631,6 +631,7 @@ const MateChatApp: React.FC = () => {
                         <div className={`${selectedChatId ? 'hidden md:flex' : 'flex'} w-full md:w-auto h-full`}>
                             <ChatList
                                 chats={chats}
+                                userEmail={user?.email} // Pass user email
                                 selectedChatId={selectedChatId}
                                 onSelectChat={handleSelectChat}
                                 loading={status === ConnectionStatus.CONNECTING && chats.length === 0}

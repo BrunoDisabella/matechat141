@@ -16,6 +16,13 @@ class SupabaseService {
         return !!this.client;
     }
 
+    async getUser(token) {
+        if (!this.client) throw new Error('Supabase not configured');
+        const { data: { user }, error } = await this.client.auth.getUser(token);
+        if (error || !user) throw new Error('Invalid token');
+        return user;
+    }
+
     async getWebhooks(userId) {
         if (!this.client) return [];
         const { data, error } = await this.client

@@ -1,5 +1,6 @@
 import { Server } from 'socket.io';
 import whatsappService from './whatsappService.js';
+import supabaseService from './supabaseService.js';
 
 class SocketService {
     constructor() {
@@ -14,56 +15,92 @@ class SocketService {
             }
         });
 
-        this.io.on('connection', (socket) => {
-            console.log(`[SOCKET] New connection: ${socket.id}`);
-            const userId = 'default-user'; // Hardcoded for now
+        // Middleware de Autenticación
+        this.io.use(async (socket, next) => {
+            try {
+                const token = socket.handshake.auth.token;
+                if (!token) return next(new Error('Authentication error: Token required'));
+
+                const user = await supabaseService.getUser(token);
+                if (!user) return next(new Error('Authentication error: Invalid Token'));
+
+                socket.userId = user.id;
+                next();
+            } catch (err) {
+                console.error('[SOCKET_AUTH] Error verifying token:', err.message);
+                next(new Error('Authentication error'));
+            }
+        });
+
+        this.io.on('connection', async (socket) => {
+            const userId = socket.userId;
+            console.log(`[SOCKET] New connection: ${socket.id} (User: ${userId})`);
+
+            // Unirse a su sala privada
+            socket.join(userId);
+
+            // Inicializar o recuperar cliente de WhatsApp para este usuario
+            // Esto asegura que si el servidor se reinició, se intente levantar la sesión de este usuario
+            try {
+                whatsappService.initializeClient(userId);
+            } catch (e) {
+                console.error(`[SOCKET] Error initializing WA for ${userId}`, e);
+            }
+
             this._handleConnection(socket, userId);
+
+            socket.on('disconnect', () => {
+                // No destruimos el cliente WA al desconectar el socket, 
+                // para que siga recibiendo mensajes en background.
+                // El logout explícito sí lo destruye.
+            });
         });
 
         this._bindWhatsAppEvents();
     }
 
     _bindWhatsAppEvents() {
-        const userId = 'default-user';
+        // Escuchar eventos globales del servicio y enrutar a la sala correcta
 
-        whatsappService.on('qr', ({ userId: uid, qr }) => {
-            if (uid === userId) this.io.emit('qr', qr);
+        whatsappService.on('qr', ({ userId, qr }) => {
+            this.io.to(userId).emit('qr', qr);
         });
 
-        whatsappService.on('ready', ({ userId: uid }) => {
-            if (uid === userId) this.io.emit('connected', true);
+        whatsappService.on('ready', ({ userId }) => {
+            this.io.to(userId).emit('connected', true);
         });
 
-        whatsappService.on('authenticated', ({ userId: uid }) => {
-            if (uid === userId) this.io.emit('connected', true);
+        whatsappService.on('authenticated', ({ userId }) => {
+            this.io.to(userId).emit('connected', true);
         });
 
-        whatsappService.on('auth_failure', ({ userId: uid }) => {
-            if (uid === userId) this.io.emit('connected', false);
+        whatsappService.on('auth_failure', ({ userId }) => {
+            this.io.to(userId).emit('connected', false);
         });
 
-        whatsappService.on('message', ({ userId: uid, message }) => {
-            if (uid === userId) this.io.emit('new-message', { ...message, chatId: message.chatId });
+        whatsappService.on('disconnected', ({ userId }) => {
+            this.io.to(userId).emit('connected', false);
         });
 
-        whatsappService.on('message_create', ({ userId: uid, message }) => {
-            if (uid === userId) this.io.emit('new-message', { ...message, chatId: message.chatId });
+        whatsappService.on('message', ({ userId, message }) => {
+            this.io.to(userId).emit('new-message', { ...message, chatId: message.chatId });
+        });
+
+        whatsappService.on('message_create', ({ userId, message }) => {
+            this.io.to(userId).emit('new-message', { ...message, chatId: message.chatId });
         });
     }
 
     _handleConnection(socket, userId) {
-        // Immediate check using local state
+        // Chequeo inmediato de estado
         if (whatsappService.isClientReady(userId)) {
             socket.emit('connected', true);
         } else {
-            // Check if client exists but maybe not ready yet
             const client = whatsappService.getClient(userId);
             if (!client) {
                 socket.emit('connected', false);
             }
-            // If client exists but not ready, we wait for 'ready' event.
-            // But we can check if it IS connected via puppeteer as backup if we really want,
-            // but relying on events is safer to avoid blocking.
+            // Si existe pero no está ready, los eventos se encargarán
         }
 
         socket.on('client-ready', async () => {
@@ -76,12 +113,11 @@ class SocketService {
                         const labels = await whatsappService.getLabels(userId);
                         socket.emit('all-labels', labels);
                     } catch (innerError) {
-                        console.error('Client connected but not ready for data fetch:', innerError.message);
-                        // Optional: emit a retry signal or partial state
+                        console.error(`[SOCKET] Error fetching initial data for ${userId}:`, innerError.message);
                     }
                 }
             } catch (e) {
-                console.error('Error fetching initial data:', e);
+                console.error(`[SOCKET] Error in client-ready for ${userId}:`, e);
             }
         });
 
@@ -91,13 +127,15 @@ class SocketService {
                 socket.emit('chat-history', { chatId, messages });
 
                 // Mark as seen - DISABLED due to wwebjs bug (markedUnread)
+                /* 
                 const client = whatsappService.getClient(userId);
                 if (client) {
                     const chat = await client.getChatById(chatId);
-                    // chat.sendSeen().catch(() => { }); 
+                    chat.sendSeen().catch(() => { }); 
                 }
+                */
             } catch (e) {
-                console.error('Error selecting chat:', e);
+                console.error(`[SOCKET] Error selecting chat for ${userId}:`, e);
             }
         });
 
@@ -105,14 +143,16 @@ class SocketService {
             try {
                 await whatsappService.sendMessage(userId, payload);
             } catch (e) {
-                console.error('Error sending message:', e);
+                console.error(`[SOCKET] Error sending message for ${userId}:`, e);
             }
         });
 
         socket.on('reset-session', async () => {
-            console.log('[SOCKET] Reset session requested');
+            console.log(`[SOCKET] Reset session requested for ${userId}`);
             try {
                 await whatsappService.logout(userId);
+                socket.emit('qr', null); // Limpiar QR en frontend
+                socket.emit('connected', false);
             } catch (e) {
                 console.error('Logout error:', e);
             }
