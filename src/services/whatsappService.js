@@ -254,27 +254,36 @@ class WhatsAppService extends EventEmitter {
             console.log(`[WA-SERVICE] Base64 Length: ${media.base64.length}`);
             console.log(`[WA-SERVICE] Filename: ${media.filename}`);
 
-            const mime = media.mimetype || media.mime || 'application/octet-stream';
             // Ensure base64 doesn't have data: prefix and is clean
-            let base64Data = media.base64;
+            let base64Data = media.base64 || media.data; // Support 'data' key too
+            if (!base64Data) throw new Error('Missing base64 data');
+
             if (base64Data.startsWith('data:')) {
                 console.log('[WA-SERVICE] Removing data URI prefix from base64');
                 base64Data = base64Data.split(',')[1];
             }
-            // Remove any newlines or whitespace that might corrupt the base64 string
+            // Remove any newlines or whitespace
             base64Data = base64Data.replace(/\s/g, '');
 
             console.log(`[WA-SERVICE] Base64 Start (First 20 chars): ${base64Data.substring(0, 20)}...`);
 
+            // Normalize filename and mimetype
+            // Handle n8n's 'fileName' (camelCase) vs 'filename' (lowercase)
+            let filename = media.filename || media.fileName || media.name;
+            let mimetype = (media.mimetype || media.mimeType || media.mime || 'application/octet-stream').toLowerCase();
+
+            console.log(`[WA-SERVICE] Resolved Mime: ${mimetype}`);
+
             // Ensure filename exists
-            let filename = media.filename;
             if (!filename) {
-                const ext = mime.split('/')[1] || 'bin';
+                const ext = mimetype.split('/')[1] || 'bin';
                 filename = `file_${Date.now()}.${ext}`;
                 console.log(`[WA-SERVICE] Filename was undefined, generated: ${filename}`);
             }
 
-            const msgMedia = new MessageMedia(mime, base64Data, filename);
+            console.log(`[WA-SERVICE] Final Filename: ${filename}`);
+
+            const msgMedia = new MessageMedia(mimetype, base64Data, filename);
 
             const options = { sendSeen: false };
             if (isVoiceMessage) {
@@ -283,7 +292,6 @@ class WhatsAppService extends EventEmitter {
             }
             if (text) options.caption = text;
 
-            console.log('[WA-SERVICE] Dispatching to chat.sendMessage...');
             try {
                 const result = await chat.sendMessage(msgMedia, options);
                 console.log('[WA-SERVICE] Message Sent Successfully:', result.id._serialized);
