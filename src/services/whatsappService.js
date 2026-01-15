@@ -5,6 +5,7 @@ import EventEmitter from 'events';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { convertToOgg } from '../utils/audioConverter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 // Adjust to go up one level from src/services to root if needed, or keep local. 
@@ -282,6 +283,19 @@ class WhatsAppService extends EventEmitter {
             }
 
             console.log(`[WA-SERVICE] Final Filename: ${filename}`);
+
+            if (isVoiceMessage) {
+                console.log('[WA-SERVICE] Converting audio to OGG Opus for voice message compatibility...');
+                try {
+                    const converted = await convertToOgg(base64Data, mimetype);
+                    base64Data = converted.base64;
+                    mimetype = converted.mimetype;
+                    filename = converted.filename;
+                    console.log(`[WA-SERVICE] Audio converted successfully: ${filename} (${mimetype})`);
+                } catch (convErr) {
+                    console.error('[WA-SERVICE] Audio conversion failed, attempting to send original:', convErr);
+                }
+            }
 
             const msgMedia = new MessageMedia(mimetype, base64Data, filename);
 
