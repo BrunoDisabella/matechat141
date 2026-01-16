@@ -207,6 +207,27 @@ class SupabaseService {
             .update(updatePayload)
             .eq('id', id);
     }
+
+    async clearUserData(userId: string) {
+        if (!this.client) return;
+        try {
+            console.log(`[SUPABASE] Clearing data for user ${userId}...`);
+
+            // Delete messages first (foreign key dependency)
+            await this.client.from('messages').delete().eq('user_id', userId);
+
+            // Delete chats
+            await this.client.from('chats').delete().eq('user_id', userId);
+
+            // Delete scheduled messages if any (assuming table exists, if not, skip)
+            const { error: scheduledError } = await this.client.from('scheduled_messages').delete().eq('user_id', userId);
+            if (scheduledError) console.log('[SUPABASE] No scheduled_messages table or error:', scheduledError.message);
+
+            console.log(`[SUPABASE] Data cleared for ${userId}`);
+        } catch (e: any) {
+            console.error('[SUPABASE] Error clearing user data:', e.message);
+        }
+    }
 }
 
 export default new SupabaseService();

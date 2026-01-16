@@ -8,7 +8,7 @@ import { Chat, Message, User, ConnectionStatus, QuickReply, Session, Label, Chat
 import { blobToBase64 } from './utils/formatters';
 import { ConsoleProvider, useConsole } from './contexts/ConsoleContext';
 import { SocketProvider, useSocket } from './contexts/SocketContext';
-import { Settings, WifiOff, ScanLine } from 'lucide-react';
+import { Settings, WifiOff, ScanLine, LogOut } from 'lucide-react';
 import { ServerStatus } from './components/ServerStatus';
 import { ApiKeyManagerModal } from './components/modals/ApiKeyManagerModal';
 import { WebhookManagerModal } from './components/modals/WebhookManagerModal';
@@ -208,10 +208,20 @@ const MateChatApp: React.FC = () => {
         initializeSocket(session.access_token, connectionUrl);
     }, [user, session, API_BASE_URL, initializeSocket]);
 
+    // Auto-open QR modal when QR code is received (e.g. after remote logout)
+    useEffect(() => {
+        if (qrCode) {
+            setShowQrModal(true);
+            setChats([]); // Also clear chats if not already cleared
+            setMessages({});
+        }
+    }, [qrCode]);
+
     useEffect(() => {
         if (!socket) return;
 
         socket.on('chats', (incomingChats: Chat[]) => {
+            // Always update from socket as it is the source of truth for the active session
             setChats(incomingChats);
             logEvent('WhatsApp', 'info', `Recibidos ${incomingChats.length} chats`);
         });
@@ -421,6 +431,8 @@ const MateChatApp: React.FC = () => {
     };
 
     const handleResetConnection = () => {
+        setChats([]); // Clear immediately on UI
+        setMessages({});
         resetConnection();
         setShowQrModal(true);
     };

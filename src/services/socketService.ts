@@ -69,8 +69,15 @@ class SocketService {
             this.io?.to(userId).emit('connected', false);
         });
 
-        whatsappService.on('disconnected', ({ userId }: any) => {
+        whatsappService.on('disconnected', async ({ userId }: any) => {
+            console.log(`[SOCKET] User ${userId} disconnected (remote). Clearing DB...`);
+            await supabaseService.clearUserData(userId);
             this.io?.to(userId).emit('connected', false);
+            this.io?.to(userId).emit('qr', null); // Trigger new QR generation on client if needed, or just let client handle 'connected: false'
+            // Ideally we should ask WA service to re-init to get a new QR immediately
+            try {
+                whatsappService.initializeClient(userId);
+            } catch (e) { console.error('Error re-init after disconnect', e); }
         });
 
         // Add 'messageId' to acknowledge sent messages or new received
@@ -127,6 +134,9 @@ class SocketService {
         socket.on('reset-session', async () => {
             try {
                 await whatsappService.logout(userId);
+                // Clear DB to prevent ghost chats on next login
+                await supabaseService.clearUserData(userId);
+
                 socket.emit('qr', null);
                 socket.emit('connected', false);
             } catch (e) {
