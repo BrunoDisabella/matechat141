@@ -35,13 +35,15 @@ class SocketService {
             const userId = socket.userId;
             console.log(`[SOCKET] New connection: ${socket.id} (User: ${userId})`);
 
-            socket.join(userId);
+            socket.join(userId); // Join personal room (for private notifs if any)
+            socket.join('company_main'); // Join global company room
 
-            // Auto-init WA for this user if not running
+            // Auto-init WA (Global) check
             try {
+                // This will just return the existing global client if running
                 whatsappService.initializeClient(userId);
             } catch (e) {
-                console.error(`[SOCKET] Error initializing WA for ${userId}`, e);
+                console.error(`[SOCKET] Error initializing WA`, e);
             }
 
             this._handleConnection(socket, userId);
@@ -53,53 +55,54 @@ class SocketService {
     private _bindWhatsAppEvents() {
         if (!this.io) return;
 
-        whatsappService.on('qr', ({ userId, qr }: any) => {
-            this.io?.to(userId).emit('qr', qr);
+        // Broadcast events to EVERYONE (Shared Inbox)
+
+        whatsappService.on('qr', ({ qr }: any) => {
+            this.io?.emit('qr', qr);
         });
 
-        whatsappService.on('ready', ({ userId }: any) => {
-            this.io?.to(userId).emit('connected', true);
+        whatsappService.on('ready', () => {
+            this.io?.emit('connected', true);
         });
 
-        whatsappService.on('authenticated', ({ userId }: any) => {
-            this.io?.to(userId).emit('connected', true);
+        whatsappService.on('authenticated', () => {
+            this.io?.emit('connected', true);
         });
 
-        whatsappService.on('auth_failure', ({ userId }: any) => {
-            this.io?.to(userId).emit('connected', false);
+        whatsappService.on('auth_failure', () => {
+            this.io?.emit('connected', false);
         });
 
-        whatsappService.on('disconnected', ({ userId }: any) => {
-            this.io?.to(userId).emit('connected', false);
+        whatsappService.on('disconnected', () => {
+            this.io?.emit('connected', false);
         });
 
-        // Add 'messageId' to acknowledge sent messages or new received
-        whatsappService.on('message', ({ userId, message }: any) => {
-            this.io?.to(userId).emit('new-message', { ...message, chatId: message.chatId });
+        whatsappService.on('message', ({ message }: any) => {
+            this.io?.emit('new-message', { ...message, chatId: message.chatId });
         });
 
-        whatsappService.on('message_create', ({ userId, message }: any) => {
-            this.io?.to(userId).emit('new-message', { ...message, chatId: message.chatId });
+        whatsappService.on('message_create', ({ message }: any) => {
+            this.io?.emit('new-message', { ...message, chatId: message.chatId });
         });
     }
 
     private _handleConnection(socket: Socket, userId: string) {
-        if (whatsappService.isClientReady(userId)) {
+        // userId is irrelevant for checking WA status in Shared Mode
+        if (whatsappService.isClientReady('any')) {
             socket.emit('connected', true);
         } else {
-            // Maybe it exists but pending
-            const client = whatsappService.getClient(userId);
+            const client = whatsappService.getClient('any');
             if (!client) socket.emit('connected', false);
         }
 
         socket.on('client-ready', async () => {
-            // Client frontend is ready to receive data
-            if (whatsappService.getClient(userId)) {
+            if (whatsappService.getClient('any')) {
                 try {
-                    const chats = await whatsappService.getChats(userId);
+                    // Fetch using generic ID
+                    const chats = await whatsappService.getChats('any');
                     socket.emit('chats', chats);
 
-                    const labels = await whatsappService.getLabels(userId);
+                    const labels = await whatsappService.getLabels('any');
                     socket.emit('all-labels', labels);
                 } catch (e: any) {
                     console.error('[SOCKET] Error fetching init data:', e.message);
@@ -109,32 +112,31 @@ class SocketService {
 
         socket.on('select-chat', async (chatId: string) => {
             try {
-                const messages = await whatsappService.getChatMessages(userId, chatId);
+                const messages = await whatsappService.getChatMessages('any', chatId);
                 socket.emit('chat-history', { chatId, messages });
             } catch (e) {
-                console.error(`[SOCKET] Error selecting chat for ${userId}:`, e);
+                console.error(`[SOCKET] Error selecting chat:`, e);
             }
         });
 
         socket.on('send-message', async (payload: any) => {
             try {
-                await whatsappService.sendMessage(userId, payload);
+                await whatsappService.sendMessage('any', payload);
             } catch (e) {
-                console.error(`[SOCKET] Error sending message for ${userId}:`, e);
+                console.error(`[SOCKET] Error sending message:`, e);
             }
         });
 
         socket.on('reset-session', async () => {
             try {
-                await whatsappService.logout(userId);
-                socket.emit('qr', null);
-                socket.emit('connected', false);
+                // Logout global session
+                await whatsappService.logout('any');
+                this.io?.emit('qr', null);
+                this.io?.emit('connected', false);
             } catch (e) {
                 console.error('Logout error:', e);
             }
         });
-
-        // Label handlers can be typed better, but keeping basic for now
     }
 }
 

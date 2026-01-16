@@ -280,14 +280,14 @@ class WhatsAppService extends EventEmitter {
         }
     }
 
-    async logout(userId: string) {
-        const client = this.clients.get(userId);
+    async logout(_userId: string) {
+        const client = this.clients.get(this.GLOBAL_SESSION_ID);
         if (client) {
             await client.destroy();
-            this.clients.delete(userId);
+            this.clients.delete(this.GLOBAL_SESSION_ID);
         }
 
-        const sessionDir = path.join(PROJECT_ROOT, '.wwebjs_auth', `session-${userId}`);
+        const sessionDir = path.join(PROJECT_ROOT, '.wwebjs_auth', `session-${this.GLOBAL_SESSION_ID}`);
         try {
             if (fs.existsSync(sessionDir)) {
                 fs.rmSync(sessionDir, { recursive: true, force: true });
@@ -296,28 +296,20 @@ class WhatsAppService extends EventEmitter {
             console.error('Error removing session files:', e);
         }
 
-        this.initializeClient(userId);
+        // Reiniciar inmediatamente para esperar nuevo QR
+        this.initializeClient('system_restart');
     }
 
     restoreSessions() {
         const authPath = path.join(PROJECT_ROOT, '.wwebjs_auth');
-        if (!fs.existsSync(authPath)) {
-            console.log('[WA-SERVICE] No auth folder found. Skipping restore.');
-            return;
-        }
+        // Check for specific global session folder
+        const globalSessionPath = path.join(authPath, `session-${this.GLOBAL_SESSION_ID}`);
 
-        console.log('[WA-SERVICE] Scanning for existing sessions...');
-        try {
-            const files = fs.readdirSync(authPath);
-            files.forEach(file => {
-                if (file.startsWith('session-')) {
-                    const userId = file.replace('session-', '');
-                    console.log(`[WA-SERVICE] Found session for ${userId}, restoring...`);
-                    this.initializeClient(userId);
-                }
-            });
-        } catch (e) {
-            console.error('[WA-SERVICE] Error restoring sessions:', e);
+        if (fs.existsSync(globalSessionPath)) {
+            console.log(`[WA-SERVICE] Found GLOBAL session (${this.GLOBAL_SESSION_ID}), restoring...`);
+            this.initializeClient('system_restore');
+        } else {
+            console.log('[WA-SERVICE] No global session found. Waiting for initialization.');
         }
     }
 }
