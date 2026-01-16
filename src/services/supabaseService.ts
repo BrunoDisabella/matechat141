@@ -1,29 +1,16 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, '../../src/config/env.js') });
-
-// Use environment variables or defaults
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY || '';
-
-if (!supabaseUrl || !supabaseKey) {
-    console.error('Missing Supabase URL or Key in env');
-}
-
-export const supabase = createClient(supabaseUrl, supabaseKey);
+import { config } from '../config/env.js';
 
 class SupabaseService {
     private client: SupabaseClient | null = null;
 
     constructor() {
-        if (supabaseUrl && supabaseKey) {
-            this.client = supabase;
+        if (config.supabaseUrl && config.supabaseServiceKey) {
+            this.client = createClient(config.supabaseUrl, config.supabaseServiceKey);
+            console.log('[SUPABASE] Initialized');
+        } else {
+            console.error('[SUPABASE] Missing credentials in config');
         }
     }
 
@@ -38,7 +25,6 @@ class SupabaseService {
         if (!this.client) return;
         const { id, name, isGroup, unreadCount, timestamp, userId, profilePicUrl } = chatData;
 
-        // Upsert Chat
         const { error } = await this.client
             .from('chats')
             .upsert({
@@ -59,7 +45,6 @@ class SupabaseService {
     async saveMessage(message: any, userId: string) {
         if (!this.client) return;
 
-        // Prepare payload
         const payload = {
             id: message.id,
             chat_id: message.chatId,
