@@ -447,7 +447,7 @@ const MateChatApp: React.FC = () => {
     // --- RENDERIZADO "PREMIUM" ---
     if (!user) return <Login />;
 
-    if (showQrModal && qrCode) {
+    if (showQrModal) {
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm">
                 <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full relative border border-slate-200">
@@ -457,11 +457,24 @@ const MateChatApp: React.FC = () => {
                     >
                         ✕
                     </button>
-                    <h2 className="text-2xl font-bold mb-6 text-center text-slate-800">Escanea para Conectar</h2>
-                    <QRCodeDisplay qrCode={qrCode} status={status} />
-                    <p className="text-center mt-6 text-sm text-slate-500">
-                        Abre WhatsApp en tu móvil &gt; Dispositivos vinculados &gt; Vincular dispositivo
-                    </p>
+                    <h2 className="text-2xl font-bold mb-6 text-center text-slate-800">
+                        {qrCode ? 'Escanea para Conectar' : 'Conectando...'}
+                    </h2>
+
+                    {qrCode ? (
+                        <>
+                            <QRCodeDisplay qrCode={qrCode} status={status} />
+                            <p className="text-center mt-6 text-sm text-slate-500">
+                                Abre WhatsApp en tu móvil &gt; Dispositivos vinculados &gt; Vincular dispositivo
+                            </p>
+                        </>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center py-12">
+                            <div className="w-16 h-16 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin mb-4"></div>
+                            <p className="text-slate-500 font-medium">Generando código QR...</p>
+                            <p className="text-xs text-slate-400 mt-2">Por favor espera un momento</p>
+                        </div>
+                    )}
                 </div>
             </div>
         );
