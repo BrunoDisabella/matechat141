@@ -1,20 +1,55 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# MateChat Professional
 
-# Run and deploy your AI Studio app
+Bienvenido a la versión **Profesional** de MateChat.
+Este proyecto ha sido refactorizado para ser robusto, persistente y escalable.
 
-This contains everything you need to run your app locally.
+## 🚀 Arquitectura "Indestructible"
 
-View your app in AI Studio: https://ai.studio/apps/drive/1ckktX5-IgZtYHm-ICnqSle6huk279yj7
+### 1. Sistema de Procesos (PM2)
+La aplicación ya no corre "suelta" en la terminal. Ahora es gestionada por **PM2**, un gestor de procesos de producción.
+- **Auto-Reinicio**: Si la app falla, se levanta sola en menos de 1 segundo.
+- **Segundo Plano**: Funciona 24/7 sin necesitar una terminal abierta.
+- **Gestión**: `pm2 logs`, `pm2 monit`, `pm2 stop matechat-server`.
 
-## Run Locally
+### 2. Base de Datos & Persistencia (Supabase)
+Adiós a la pérdida de datos.
+- **Sincronización Total**: Cada mensaje (entrante/saliente) se guarda en tiempo real en la tabla `messages` de Supabase.
+- **Chat Metadata**: La tabla `chats` se actualiza automáticamente con cada interacción.
+- **Modo Offline**: Si el servidor se apaga, los datos están seguros en la nube.
 
-**Prerequisites:**  Node.js
+### 3. TypeScript Core
+El "cerebro" del backend ha sido reescrito en **TypeScript** para máxima estabilidad.
+- `server.ts`: Punto de entrada robusto.
+- `whatsappService.ts`: Gestión de cliente con reconexión inteligente y manejo de sesiones.
+- `socketService.ts`: Comunicación tiempo real con el frontend.
+- `webhookDispatcher.ts`: Envío garantizado de datos a n8n/CRM, con sanitización de IDs.
 
+## 🛠️ Comandos Clave
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+**Instalación:**
+```bash
+npm install
+```
+
+**Iniciar (Modo Producción):**
+```bash
+pm2 start ecosystem.config.cjs
+```
+
+**Ver Logs:**
+```bash
+pm2 logs matechat-server
+```
+
+**Desarrollo (Tests):**
+```bash
+npm run dev
+```
+
+## 🔌 Webhooks & Integración
+El sistema envía eventos a los webhooks configurados (vía UI o DB).
+- **Formato de ChatID**: `59899123456@c.us` (Formato estándar de WhatsApp).
+- **Eventos**: `message_received`, `message_sent`.
+
+---
+*Desarrollado con ❤️ y TypeScript.*
