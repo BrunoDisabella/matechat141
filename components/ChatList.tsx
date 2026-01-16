@@ -219,7 +219,16 @@ export const ChatList: React.FC<ChatListProps> = ({
                     <button title="Settings" onClick={onOpenApiKeyModal} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all">
                         <MoreVertical className="w-5 h-5" />
                     </button>
-                    <button title="Logout" onClick={onLogout} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all">
+                    {status === 'connected' && (
+                        <button title="Eliminar Conexión (Reset)" onClick={() => {
+                            if (confirm('¿Seguro que quieres eliminar la conexión de WhatsApp? Tendrás que escanear el QR de nuevo.')) {
+                                onResetConnection();
+                            }
+                        }} className="p-2 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-xl transition-all">
+                            <Trash2 className="w-5 h-5" />
+                        </button>
+                    )}
+                    <button title="Cerrar Sesión (Web)" onClick={onLogout} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all">
                         <LogOut className="w-5 h-5" />
                     </button>
                 </div>
@@ -247,8 +256,8 @@ export const ChatList: React.FC<ChatListProps> = ({
                     <button
                         onClick={() => setActiveFilters([])}
                         className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${activeFilters.length === 0
-                                ? 'bg-slate-800 text-white border-slate-800 shadow-md transform scale-105'
-                                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                            ? 'bg-slate-800 text-white border-slate-800 shadow-md transform scale-105'
+                            : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
                             }`}
                     >
                         Todos
@@ -258,8 +267,8 @@ export const ChatList: React.FC<ChatListProps> = ({
                             key={label.id}
                             onClick={() => handleFilterToggle(label.id)}
                             className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5 ${activeFilters.includes(label.id)
-                                    ? 'bg-white shadow-md transform scale-105 ring-2 ring-offset-1'
-                                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 opacity-80 hover:opacity-100'
+                                ? 'bg-white shadow-md transform scale-105 ring-2 ring-offset-1'
+                                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 opacity-80 hover:opacity-100'
                                 }`}
                             style={activeFilters.includes(label.id)
                                 ? { borderColor: label.color, color: label.color, ringColor: label.color }
