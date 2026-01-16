@@ -133,6 +133,20 @@ class SupabaseService {
         return data ? data.api_key : null;
     }
 
+    async getUserByApiKey(apiKey: string): Promise<string | null> {
+        if (!this.client) return null;
+        const { data, error } = await this.client
+            .from('api_config')
+            .select('user_id')
+            .eq('api_key', apiKey)
+            .maybeSingle();
+
+        if (error || !data) {
+            return null;
+        }
+        return data.user_id;
+    }
+
     async updateApiKeyConfig(userId: string, apiKey: string) {
         if (!this.client) return;
 
