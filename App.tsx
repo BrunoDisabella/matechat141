@@ -339,7 +339,6 @@ const MateChatApp: React.FC = () => {
                 beforeId: oldestMessage.id
             });
         } else {
-        } else {
             // SIMPLIFICATION: Disable offline fetch
             /*
            logEvent('Chat', 'info', 'Pidiendo más mensajes a Supabase (Offline)...');
