@@ -1,98 +1,75 @@
+
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { config } from '../config/env.js';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '../../src/config/env.js') });
+
+// Use environment variables or defaults
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY || '';
+
+if (!supabaseUrl || !supabaseKey) {
+    console.error('Missing Supabase URL or Key in env');
+}
+
+export const supabase = createClient(supabaseUrl, supabaseKey);
 
 class SupabaseService {
     private client: SupabaseClient | null = null;
 
     constructor() {
-        if (config.supabaseUrl && config.supabaseServiceKey) {
-            this.client = createClient(config.supabaseUrl, config.supabaseServiceKey);
-            console.log('[SUPABASE] Initialized');
-        } else {
-            console.warn('[SUPABASE] Missing credentials, running in limited mode');
+        if (supabaseUrl && supabaseKey) {
+            this.client = supabase;
         }
-    }
-
-    isConfigured(): boolean {
-        return !!this.client;
     }
 
     async getUser(token: string) {
-        if (!this.client) throw new Error('Supabase not configured');
+        if (!this.client) return null;
         const { data: { user }, error } = await this.client.auth.getUser(token);
-        if (error || !user) throw new Error('Invalid token');
+        if (error || !user) return null;
         return user;
     }
 
-    async getWebhooks(userId: string) {
-        if (!this.client) return [];
-        const { data, error } = await this.client
-            .from('webhooks')
-            .select('*')
-            .eq('user_id', userId);
-
-        if (error) {
-            console.error('Error fetching webhooks:', error);
-            throw error; // Or return empty if you prefer resilience over visibility
-        }
-        return data.map((w: any) => ({
-            url: w.url,
-            onMessageReceived: w.on_message_received,
-            onMessageSent: w.on_message_sent
-        }));
-    }
-
-    async getApiKeyConfig(userId: string) {
-        if (!this.client) return null;
-        const { data, error } = await this.client
-            .from('api_config')
-            .select('api_key')
-            .eq('user_id', userId)
-            .single();
-
-        if (error && error.code !== 'PGRST116') return null;
-        return data ? data.api_key : null;
-    }
-
-    // --- Persistence Methods (NEW) ---
-
-    async upsertChat(userId: string, chatData: { id: string, name?: string, isGroup?: boolean }) {
+    async upsertChat(chatData: any) {
         if (!this.client) return;
+        const { id, name, isGroup, unreadCount, timestamp, userId, profilePicUrl } = chatData;
 
-        // Prepare payload, only include name if present/valid
-        const payload: any = {
-            id: chatData.id,
-            user_id: userId,
-            is_group: chatData.isGroup || false,
-            updated_at: new Date().toISOString()
-        };
-        if (chatData.name) payload.name = chatData.name;
-
-        // Upsert chat to ensure it exists
+        // Upsert Chat
         const { error } = await this.client
             .from('chats')
-            .upsert(payload, { onConflict: 'id,user_id' });
+            .upsert({
+                id,
+                user_id: userId,
+                name,
+                is_group: isGroup,
+                unread_count: unreadCount,
+                last_message_timestamp: timestamp ? new Date(timestamp * 1000).toISOString() : new Date().toISOString(),
+                profile_pic_url: profilePicUrl
+            }, { onConflict: 'id,user_id' });
 
-        if (error) console.error('[DB] Error upserting chat:', error.message);
+        if (error) {
+            console.error('[DB] Error saving chat:', error.message);
+        }
     }
 
-    async saveMessage(userId: string, message: any) {
+    async saveMessage(message: any, userId: string) {
         if (!this.client) return;
 
-        // Ensure chat exists first (optional, but good for integrity)
-        // We can do this async without awaiting if we trust foreign keys or want speed
-        // await this.upsertChat(userId, { id: message.chatId });
-
+        // Prepare payload
         const payload = {
-            id: message.id, // WA ID
+            id: message.id,
             chat_id: message.chatId,
             user_id: userId,
             body: message.body,
             from_me: message.fromMe,
-            type: message.type || 'chat',
-            has_media: message.hasMedia || false,
-            timestamp: new Date(message.timestamp * 1000).toISOString(), // WA timestamp is seconds
-            created_at: new Date().toISOString()
+            type: message.type,
+            timestamp: new Date(message.timestamp * 1000).toISOString(),
+            has_media: message.hasMedia,
+            media_url: message.media ? message.media.url : null
         };
 
         const { error } = await this.client
@@ -109,44 +86,43 @@ class SupabaseService {
             }).match({ id: message.chatId, user_id: userId });
         }
     }
-}
 
-// --- Queue Methods (Enterprise) ---
+    // --- Queue Methods (Enterprise) ---
 
-subscribeToQueue(callback: (payload: any) => void) {
-    if (!this.client) return;
-    console.log('[SUPABASE] Subscribing to message_queue...');
-    this.client
-        .channel('public:message_queue')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_queue' }, callback)
-        .subscribe();
-}
+    subscribeToQueue(callback: (payload: any) => void) {
+        if (!this.client) return;
+        console.log('[SUPABASE] Subscribing to message_queue...');
+        this.client
+            .channel('public:message_queue')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_queue' }, callback)
+            .subscribe();
+    }
 
     async getPendingMessages() {
-    if (!this.client) return [];
-    const { data, error } = await this.client
-        .from('message_queue')
-        .select('*')
-        .eq('status', 'pending')
-        .order('created_at', { ascending: true });
+        if (!this.client) return [];
+        const { data, error } = await this.client
+            .from('message_queue')
+            .select('*')
+            .eq('status', 'pending')
+            .order('created_at', { ascending: true });
 
-    if (error) {
-        console.error('[DB] Error fetching pending queue:', error.message);
-        return [];
+        if (error) {
+            console.error('[SUPABASE] Error fetching pending:', error.message);
+            return [];
+        }
+        return data;
     }
-    return data;
-}
 
-    async updateQueueStatus(id: number, status: string, errorMsg ?: string) {
-    if (!this.client) return;
-    const update: any = { status, processed_at: new Date().toISOString() };
-    if (errorMsg) update.error_message = errorMsg;
+    async updateQueueStatus(id: number, status: string, errorMessage?: string) {
+        if (!this.client) return;
+        const updatePayload: any = { status, processed_at: new Date() };
+        if (errorMessage) updatePayload.error_message = errorMessage;
 
-    await this.client
-        .from('message_queue')
-        .update(update)
-        .eq('id', id);
-}
+        await this.client
+            .from('message_queue')
+            .update(updatePayload)
+            .eq('id', id);
+    }
 }
 
 export default new SupabaseService();
