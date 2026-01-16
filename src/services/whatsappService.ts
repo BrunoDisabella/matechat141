@@ -5,17 +5,14 @@ import EventEmitter from 'events';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { convertToOgg } from '../utils/audioConverter.js'; // Will remain JS for now, or TS later
-// import { convertToOgg } from '../utils/audioConverter'; // If we convert utils
+import { convertToOgg } from '../utils/audioConverter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// Root is two levels up from src/services -> src/ -> root. 
-// Actually src/services is level 2. So ../../ is root.
 const PROJECT_ROOT = path.resolve(__dirname, '../../');
 
 class WhatsAppService extends EventEmitter {
-    private clients: Map<string, any>; // Using 'any' for Client temporarily to avoid deep typing friction
+    private clients: Map<string, any>;
     private readyUserIds: Set<string>;
 
     constructor() {
@@ -31,8 +28,6 @@ class WhatsAppService extends EventEmitter {
     initializeClient(userId: string) {
         if (this.clients.has(userId)) {
             const client = this.clients.get(userId);
-            // If client exists but was destroyed/disconnected, we might need to check state.
-            // But usually we delete from map on destroy.
             return client;
         }
 
@@ -101,6 +96,13 @@ class WhatsAppService extends EventEmitter {
             this.emit('auth_failure', { userId });
         });
 
+        client.on('disconnected', (reason: string) => {
+            console.log(`[WA-${userId}] Disconnected:`, reason);
+            this.readyUserIds.delete(userId);
+            this.emit('disconnected', { userId });
+            this.clients.delete(userId);
+        });
+
         client.on('message', async (msg: any) => {
             try {
                 const chat = await msg.getChat();
@@ -125,7 +127,6 @@ class WhatsAppService extends EventEmitter {
 
         client.on('message_create', async (msg: any) => {
             if (msg.fromMe) {
-                // For outgoing messages, we also want to emit so we can archive them
                 this.emit('message_create', {
                     userId,
                     message: {
@@ -139,17 +140,6 @@ class WhatsAppService extends EventEmitter {
                     }
                 });
             }
-        });
-
-        client.on('disconnected', (reason: string) => {
-            console.log(`[WA-${userId}] Disconnected:`, reason);
-            this.readyUserIds.delete(userId);
-            this.emit('disconnected', { userId });
-            this.clients.delete(userId);
-
-            // Auto-reconnect not aggressive here, rely on PM2/Process or explicit retry via UI?
-            // "Professional" app should try to reconnect unless explicitly logged out.
-            // But wwebjs usually fails hard on disconnect. 
         });
     }
 
@@ -280,14 +270,14 @@ class WhatsAppService extends EventEmitter {
         }
     }
 
-    async logout(_userId: string) {
-        const client = this.clients.get(this.GLOBAL_SESSION_ID);
+    async logout(userId: string) {
+        const client = this.clients.get(userId);
         if (client) {
             await client.destroy();
-            this.clients.delete(this.GLOBAL_SESSION_ID);
+            this.clients.delete(userId);
         }
 
-        const sessionDir = path.join(PROJECT_ROOT, '.wwebjs_auth', `session-${this.GLOBAL_SESSION_ID}`);
+        const sessionDir = path.join(PROJECT_ROOT, '.wwebjs_auth', `session-${userId}`);
         try {
             if (fs.existsSync(sessionDir)) {
                 fs.rmSync(sessionDir, { recursive: true, force: true });
@@ -296,20 +286,28 @@ class WhatsAppService extends EventEmitter {
             console.error('Error removing session files:', e);
         }
 
-        // Reiniciar inmediatamente para esperar nuevo QR
-        this.initializeClient('system_restart');
+        this.initializeClient(userId);
     }
 
     restoreSessions() {
         const authPath = path.join(PROJECT_ROOT, '.wwebjs_auth');
-        // Check for specific global session folder
-        const globalSessionPath = path.join(authPath, `session-${this.GLOBAL_SESSION_ID}`);
+        if (!fs.existsSync(authPath)) {
+            console.log('[WA-SERVICE] No auth folder found. Skipping restore.');
+            return;
+        }
 
-        if (fs.existsSync(globalSessionPath)) {
-            console.log(`[WA-SERVICE] Found GLOBAL session (${this.GLOBAL_SESSION_ID}), restoring...`);
-            this.initializeClient('system_restore');
-        } else {
-            console.log('[WA-SERVICE] No global session found. Waiting for initialization.');
+        console.log('[WA-SERVICE] Scanning for existing sessions...');
+        try {
+            const files = fs.readdirSync(authPath);
+            files.forEach(file => {
+                if (file.startsWith('session-')) {
+                    const userId = file.replace('session-', '');
+                    console.log(`[WA-SERVICE] Found session for ${userId}, restoring...`);
+                    this.initializeClient(userId);
+                }
+            });
+        } catch (e) {
+            console.error('[WA-SERVICE] Error restoring sessions:', e);
         }
     }
 }
