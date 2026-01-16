@@ -7,44 +7,38 @@ import { QRCodeDisplay } from './components/QRCodeDisplay';
 import { Chat, Message, User, ConnectionStatus, QuickReply, Session, Label, ChatLabels, ScheduledMessage } from './types';
 import { blobToBase64 } from './utils/formatters';
 import { ConsoleProvider, useConsole } from './contexts/ConsoleContext';
-import { SocketProvider, useSocket } from './contexts/SocketContext'; // Import Context
-import { Settings, WifiOff, ScanLine } from 'lucide-react'; // Iconos añadidos
-
-// Modales
+import { SocketProvider, useSocket } from './contexts/SocketContext';
+import { Settings, WifiOff, ScanLine } from 'lucide-react';
 import { ServerStatus } from './components/ServerStatus';
 import { ApiKeyManagerModal } from './components/modals/ApiKeyManagerModal';
 import { WebhookManagerModal } from './components/modals/WebhookManagerModal';
 import { QuickReplyManagerModal } from './components/modals/QuickReplyManagerModal';
 import { LabelManagerModal } from './components/modals/LabelManagerModal';
 import { StatusSchedulerModal } from './components/modals/StatusSchedulerModal';
+import { EmptyState } from './components/EmptyState';
 
-// Componente interno para usar hooks dentro del provider
 const MateChatApp: React.FC = () => {
     const [user, setUser] = useState<User | null>(null);
     const [session, setSession] = useState<Session | null>(null);
     const { socket, status, qrCode, serverError, initializeSocket, resetConnection, disconnectSocket } = useSocket();
 
-    // Estados de UI
     const [chats, setChats] = useState<Chat[]>([]);
     const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
     const [messages, setMessages] = useState<Record<string, Message[]>>({});
     const [scheduledMessages, setScheduledMessages] = useState<Record<string, ScheduledMessage[]>>({});
     const [loadingHistory, setLoadingHistory] = useState(false);
-    const [loadingMore, setLoadingMore] = useState(false); // Estado para paginación
+    const [loadingMore, setLoadingMore] = useState(false);
     const [quickReplies, setQuickReplies] = useState<QuickReply[]>([]);
 
-    // Estado de Conexión y Configuración de Servidor
     const [customServerUrl, setCustomServerUrl] = useState<string>(() => {
         return localStorage.getItem('matechat_server_url') || '';
     });
     const [isConfiguringServer, setIsConfiguringServer] = useState(false);
-    const [showQrModal, setShowQrModal] = useState(false); // Nuevo estado para ver QR manualmente en modo espejo
+    const [showQrModal, setShowQrModal] = useState(false);
 
-    // Estados de Etiquetas
     const [labels, setLabels] = useState<Label[]>([]);
     const [chatLabels, setChatLabels] = useState<ChatLabels>({});
 
-    // Estados de Modales
     const [showApiKeyModal, setShowApiKeyModal] = useState(false);
     const [showWebhooksModal, setShowWebhooksModal] = useState(false);
     const [showQuickRepliesModal, setShowQuickRepliesModal] = useState(false);
@@ -53,23 +47,17 @@ const MateChatApp: React.FC = () => {
 
     const { logEvent } = useConsole();
 
-    // Determinar URL base
     const getServerUrl = useCallback(() => {
         if (customServerUrl) return customServerUrl;
         const hostname = window.location.hostname;
-        // Si es localhost explícito
         if (hostname === 'localhost' || hostname === '127.0.0.1') return 'http://localhost:3001';
-        // Si estamos en producción (mismo dominio)
-        // FIX: Safely access import.meta.env
         const env = (import.meta as any).env;
         if (env && env.PROD) return window.location.origin;
-        // Default fallback (probablemente fallará en cloud IDEs sin config manual)
         return window.location.origin;
     }, [customServerUrl]);
 
     const API_BASE_URL = getServerUrl();
 
-    // Auth
     useEffect(() => {
         supabase.auth.getSession().then(({ data: { session: supabaseSession } }) => {
             if (supabaseSession?.user) {
@@ -92,9 +80,6 @@ const MateChatApp: React.FC = () => {
         return () => subscription.unsubscribe();
     }, [logEvent]);
 
-    // --- CARGA DE DATOS DESDE SUPABASE (MODO ESPEJO/OFFLINE) ---
-
-    // 1. Cargar Chats
     const fetchChatsFromSupabase = useCallback(async () => {
         if (!user) return;
         try {
@@ -115,17 +100,16 @@ const MateChatApp: React.FC = () => {
                     lastMessage: c.last_message_body ? {
                         body: c.last_message_body,
                         timestamp: new Date(c.last_message_timestamp).getTime() / 1000,
-                        fromMe: false, // No podemos saberlo solo con esto, pero sirve para visualizar
+                        fromMe: false,
                         id: 'prev',
                         type: 'chat',
                         hasMedia: false
                     } : undefined,
                     unreadCount: 0,
-                    profilePicUrl: null // No guardamos esto en DB aún
+                    profilePicUrl: null
                 }));
 
                 setChats(prev => {
-                    // Si ya tenemos chats del socket (más completos), no sobreescribir con datos básicos de DB a menos que esté vacío
                     if (prev.length > 0 && status === ConnectionStatus.CONNECTED) return prev;
                     return formattedChats;
                 });
@@ -136,30 +120,15 @@ const MateChatApp: React.FC = () => {
         }
     }, [user, status, logEvent]);
 
-    // 2. Cargar Etiquetas y Asignaciones
     const fetchLabelsFromSupabase = useCallback(async () => {
         if (!user) return;
         try {
             logEvent('DB', 'info', 'Cargando etiquetas desde Supabase...');
-
-            // Fetch Labels
-            const { data: dbLabels, error: labelsError } = await supabase
-                .from('labels')
-                .select('*')
-                .eq('user_id', user.id);
-
+            const { data: dbLabels, error: labelsError } = await supabase.from('labels').select('*').eq('user_id', user.id);
             if (labelsError) throw labelsError;
+            if (dbLabels) setLabels(dbLabels);
 
-            if (dbLabels) {
-                setLabels(dbLabels);
-            }
-
-            // Fetch Chat Assignments
-            const { data: dbAssignments, error: assignError } = await supabase
-                .from('chat_labels')
-                .select('chat_id, label_id')
-                .eq('user_id', user.id);
-
+            const { data: dbAssignments, error: assignError } = await supabase.from('chat_labels').select('chat_id, label_id').eq('user_id', user.id);
             if (assignError) throw assignError;
 
             if (dbAssignments) {
@@ -170,14 +139,12 @@ const MateChatApp: React.FC = () => {
                 });
                 setChatLabels(mapping);
             }
-
             logEvent('DB', 'info', `Cargadas ${dbLabels?.length || 0} etiquetas y sus asignaciones.`);
         } catch (e: any) {
             logEvent('DB', 'error', 'Error cargando etiquetas de DB', e.message);
         }
     }, [user, logEvent]);
 
-    // Ejecutar cargas iniciales de DB
     useEffect(() => {
         if (user) {
             fetchChatsFromSupabase();
@@ -185,7 +152,6 @@ const MateChatApp: React.FC = () => {
         }
     }, [user, fetchChatsFromSupabase, fetchLabelsFromSupabase]);
 
-    // Cargar historial desde DB cuando se selecciona chat (Fallback si no hay socket)
     const fetchMessagesFromSupabase = useCallback(async (chatId: string) => {
         if (!user) return;
         try {
@@ -206,7 +172,7 @@ const MateChatApp: React.FC = () => {
                     type: m.type,
                     hasMedia: m.has_media,
                     media: undefined
-                }));
+                })); // Fixed: Ensure media is undefined or handled if DB stored it
                 setMessages(prev => ({ ...prev, [chatId]: formattedMessages }));
                 setLoadingHistory(false);
             }
@@ -215,11 +181,9 @@ const MateChatApp: React.FC = () => {
         }
     }, [user]);
 
-    // Fetch Quick Replies
     const fetchQuickReplies = useCallback(async () => {
         if (!session) return;
         try {
-            // Aseguramos que la URL no termine en barra para evitar dobles barras
             const baseUrl = API_BASE_URL.replace(/\/$/, '');
             const res = await fetch(`${baseUrl}/api/quick-replies`, {
                 headers: { 'Authorization': `Bearer ${session.access_token}` }
@@ -238,15 +202,12 @@ const MateChatApp: React.FC = () => {
         if (session && !serverError) fetchQuickReplies();
     }, [session, fetchQuickReplies, serverError]);
 
-
-    // Socket Initialization via Context
     useEffect(() => {
         if (!user || !session) return;
         const connectionUrl = API_BASE_URL;
         initializeSocket(session.access_token, connectionUrl);
     }, [user, session, API_BASE_URL, initializeSocket]);
 
-    // Bind Data Events to Socket
     useEffect(() => {
         if (!socket) return;
 
@@ -267,9 +228,7 @@ const MateChatApp: React.FC = () => {
                 const currentMessages = prev[chatId] || [];
                 const existingIds = new Set(currentMessages.map(m => m.id));
                 const uniqueNew = newMessages.filter(m => !existingIds.has(m.id));
-
                 if (uniqueNew.length === 0) return prev;
-
                 const merged = [...uniqueNew, ...currentMessages].sort((a, b) => a.timestamp - b.timestamp);
                 return { ...prev, [chatId]: merged };
             });
@@ -340,13 +299,11 @@ const MateChatApp: React.FC = () => {
 
     const handleSelectChat = (chatId: string) => {
         setSelectedChatId(chatId);
-
         if (!messages[chatId]) {
             setLoadingHistory(true);
             if (status === ConnectionStatus.CONNECTED) {
                 socket?.emit('select-chat', chatId);
             } else {
-                // Fallback DB
                 fetchMessagesFromSupabase(chatId);
             }
         }
@@ -357,14 +314,11 @@ const MateChatApp: React.FC = () => {
 
     const handleLoadMoreMessages = useCallback(async () => {
         if (!selectedChatId || loadingMore || !user) return;
-
         const currentMessages = messages[selectedChatId] || [];
         if (currentMessages.length === 0) return;
-
-        const oldestMessage = currentMessages[0]; // Asumimos orden ascendente [viejo ... nuevo]
+        const oldestMessage = currentMessages[0];
         setLoadingMore(true);
 
-        // Estrategia híbrida: Si hay socket, pedimos a WA. Si no, pedimos a DB (paginación offline).
         if (status === ConnectionStatus.CONNECTED && socket) {
             logEvent('Chat', 'info', 'Pidiendo más mensajes al socket...', oldestMessage.id);
             socket.emit('load-more-messages', {
@@ -373,7 +327,6 @@ const MateChatApp: React.FC = () => {
                 beforeId: oldestMessage.id
             });
         } else {
-            // Fallback Offline (Supabase Pagination)
             logEvent('Chat', 'info', 'Pidiendo más mensajes a Supabase (Offline)...');
             try {
                 const { data: dbMessages } = await supabase
@@ -381,7 +334,7 @@ const MateChatApp: React.FC = () => {
                     .select('*')
                     .eq('chat_id', selectedChatId)
                     .eq('user_id', user.id)
-                    .lt('timestamp', new Date(oldestMessage.timestamp * 1000).toISOString()) // Buscar anteriores a este
+                    .lt('timestamp', new Date(oldestMessage.timestamp * 1000).toISOString())
                     .order('timestamp', { ascending: false })
                     .limit(20);
 
@@ -454,7 +407,6 @@ const MateChatApp: React.FC = () => {
         }
     };
 
-    // Handler para etiquetas en ChatWindow
     const handleToggleLabel = (labelId: string, isChecked: boolean) => {
         if (!selectedChatId || !socket) return;
         const event = isChecked ? 'assign-label' : 'unassign-label';
@@ -474,214 +426,111 @@ const MateChatApp: React.FC = () => {
     };
 
     const handleSaveServerUrl = (url: string) => {
-        const cleanUrl = url.replace(/\/$/, ''); // Quitar slash final
+        const cleanUrl = url.replace(/\/$/, '');
         setCustomServerUrl(cleanUrl);
         localStorage.setItem('matechat_server_url', cleanUrl);
         setIsConfiguringServer(false);
-        // Esto disparará el useEffect de conexión automáticamente
     };
 
+    // --- RENDERIZADO "PREMIUM" ---
     if (!user) return <Login />;
 
-    // Determinar si debemos mostrar la pantalla de bloqueo (QR/Loading)
-    // Mostramos bloqueo si: NO estamos conectados Y NO tenemos chats (ni de DB ni de Socket)
-    const shouldBlockUI = status !== ConnectionStatus.CONNECTED && chats.length === 0;
+    if (showQrModal && qrCode) {
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/90 backdrop-blur-sm">
+                <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-md w-full relative border border-slate-200">
+                    <button
+                        onClick={() => setShowQrModal(false)}
+                        className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors bg-slate-100 p-2 rounded-full"
+                    >
+                        ✕
+                    </button>
+                    <h2 className="text-2xl font-bold mb-6 text-center text-slate-800">Escanea para Conectar</h2>
+                    <QRCodeDisplay qrCode={qrCode} status={status} />
+                    <p className="text-center mt-6 text-sm text-slate-500">
+                        Abre WhatsApp en tu móvil &gt; Dispositivos vinculados &gt; Vincular dispositivo
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     return (
-        <div className="flex h-screen overflow-hidden flex-col relative">
-            {/* Banner de Error de Servidor / Configuración */}
-            {serverError && (
-                <div className="bg-red-600 text-white px-4 py-3 z-50 w-full shadow-md flex items-center justify-between animate-in slide-in-from-top flex-shrink-0 relative">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                        <WifiOff className="w-5 h-5" />
-                        <span>Desconectado del servidor. Intentando reconectar... ({API_BASE_URL})</span>
-                    </div>
-                    <button
-                        onClick={() => setIsConfiguringServer(true)}
-                        className="bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded text-xs font-bold transition-colors flex items-center gap-1"
-                    >
-                        <Settings className="w-3 h-3" /> Configurar Servidor
-                    </button>
+        <ConsoleProvider>
+            <div className="flex h-screen w-screen overflow-hidden bg-slate-50 font-sans text-slate-900">
+                {/* --- SIDEBAR (Lista de Chats) --- */}
+                <div className="w-[400px] flex-shrink-0 flex flex-col border-r border-slate-200 bg-white h-full relative shadow-[4px_0_24px_-12px_rgba(0,0,0,0.1)] z-10">
+                    <ChatList
+                        chats={chats}
+                        onSelectChat={handleSelectChat}
+                        selectedChatId={selectedChatId}
+                        status={status}
+                        currentUser={user}
+                        onLogout={handleLogout}
+                        labels={labels}
+                        chatLabels={chatLabels}
+                        onToggleLabels={() => setShowLabelManagerModal(true)}
+                        onShowApiKeyModal={() => setShowApiKeyModal(true)}
+                        onShowWebhooksModal={() => setShowWebhooksModal(true)}
+                        onShowQuickRepliesModal={() => setShowQuickRepliesModal(true)}
+                        onOpenStatusModal={() => setShowStatusModal(true)}
+                        onResetConnection={handleResetConnection}
+                        loading={status === ConnectionStatus.CONNECTING && chats.length === 0}
+                        allLabels={labels} // Legacy prop name fix
+                        userEmail={user.email}
+                        onOpenApiKeyModal={() => setShowApiKeyModal(true)} // Prop duplication fix if needed but handled above
+                        onOpenWebhooksModal={() => setShowWebhooksModal(true)}
+                        onOpenQuickRepliesModal={() => setShowQuickRepliesModal(true)}
+                    />
                 </div>
-            )}
 
-            {/* Banner de QR Pendiente (si tenemos chats pero falta auth) */}
-            {!serverError && status === ConnectionStatus.QR_READY && chats.length > 0 && !showQrModal && (
-                <div className="bg-yellow-500 text-white px-4 py-2 z-50 w-full shadow-sm flex items-center justify-between animate-in slide-in-from-top flex-shrink-0 relative">
-                    <div className="flex items-center gap-2 text-sm font-medium">
-                        <ScanLine className="w-5 h-5" />
-                        <span>WhatsApp desconectado. Escanea el código QR para reconectar.</span>
-                    </div>
-                    <button
-                        onClick={() => setShowQrModal(true)}
-                        className="bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded text-xs font-bold transition-colors"
-                    >
-                        Ver Código QR
-                    </button>
-                </div>
-            )}
+                {/* --- MAIN AREA (Ventana de Chat) --- */}
+                <div className="flex-1 flex flex-col bg-slate-50 h-full relative">
+                    {/* Background Pattern */}
+                    <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
+                    }}></div>
 
-            {/* Modal de Configuración de Servidor (Simple Overlay) */}
-            {isConfiguringServer && (
-                <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white rounded-lg shadow-2xl p-6 w-full max-w-md">
-                        <h3 className="text-lg font-bold text-gray-800 mb-2">Configurar URL del Backend</h3>
-                        <p className="text-sm text-gray-600 mb-4">
-                            En entornos Cloud (Google IDX, Codespaces), el puerto del backend (3001) tiene una URL diferente al frontend.
-                            Ingresa la URL pública de tu puerto 3001 aquí:
-                        </p>
-                        <input
-                            type="text"
-                            defaultValue={customServerUrl}
-                            placeholder="https://tu-backend-3001.preview.app"
-                            className="w-full border border-gray-300 rounded p-2 mb-4 focus:ring-2 focus:ring-[#00a884] outline-none font-mono text-sm"
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSaveServerUrl(e.currentTarget.value);
-                            }}
-                        />
-                        <div className="flex justify-end gap-2">
-                            <button
-                                onClick={() => setIsConfiguringServer(false)}
-                                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={(e) => {
-                                    const input = e.currentTarget.parentElement?.previousElementSibling as HTMLInputElement;
-                                    handleSaveServerUrl(input.value);
-                                }}
-                                className="px-4 py-2 bg-[#00a884] text-white rounded hover:bg-[#008f6f]"
-                            >
-                                Guardar y Conectar
-                            </button>
-                        </div>
-                        {window.location.hostname !== 'localhost' && (
-                            <div className="mt-4 pt-4 border-t border-gray-100 text-xs text-gray-500">
-                                <strong>Tip:</strong> Busca en tu panel de "Puertos" o "Ports" la URL asignada al puerto 3001.
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* Modal QR (Manual trigger when in mirror mode) */}
-            {showQrModal && (
-                <div className="fixed inset-0 z-[60] bg-white flex flex-col">
-                    <div className="p-4 flex justify-end">
-                        <button onClick={() => setShowQrModal(false)} className="text-gray-500 hover:text-gray-800 font-bold px-4 py-2 bg-gray-100 rounded">Cerrar</button>
-                    </div>
-                    <div className="flex-1">
-                        <QRCodeDisplay
-                            qrCode={qrCode}
-                            error={null}
-                            onLogout={handleLogout}
-                            onResetConnection={handleResetConnection}
-                        />
-                    </div>
-                </div>
-            )}
-
-            <div className="flex flex-1 overflow-hidden pt-0 relative">
-                {/* Modales */}
-                {session && (
-                    <>
-                        <ApiKeyManagerModal
-                            isOpen={showApiKeyModal}
-                            onClose={() => setShowApiKeyModal(false)}
-                            session={session}
-                        />
-                        <WebhookManagerModal
-                            isOpen={showWebhooksModal}
-                            onClose={() => setShowWebhooksModal(false)}
-                            session={session}
-                        />
-                        <QuickReplyManagerModal
-                            isOpen={showQuickRepliesModal}
-                            onClose={() => setShowQuickRepliesModal(false)}
-                            session={session}
-                            quickReplies={quickReplies}
-                            onUpdate={fetchQuickReplies}
-                        />
-                        <LabelManagerModal
-                            isOpen={showLabelManagerModal}
-                            onClose={() => setShowLabelManagerModal(false)}
-                            session={session}
+                    {selectedChatId ? (
+                        <ChatWindow
+                            chatId={selectedChatId}
+                            chatName={chats.find(c => c.id === selectedChatId)?.name || selectedChatId || 'Chat'}
+                            messages={messages[selectedChatId] || []}
+                            userId={user.id}
+                            onSendMessage={handleSendMessage}
+                            loading={loadingHistory}
+                            onScrollTop={() => { }}
                             labels={labels}
-                            socket={socket}
+                            chatLabels={chatLabels[selectedChatId] || []}
+                            quickReplies={quickReplies}
+                            currentUserId={user.id}
+                            loadingHistory={loadingHistory}
+                            scheduledMessages={scheduledMessages[selectedChatId] || []}
+                            onToggleSchedule={handleToggleSchedule}
+                            onDeleteSchedule={handleDeleteSchedule}
+                            currentChatLabels={chatLabels[selectedChatId] || []}
+                            onToggleLabel={handleToggleLabel}
+                            allLabels={labels}
+                            loadingMore={loadingMore}
+                            onLoadMore={handleLoadMoreMessages}
                         />
-                        <StatusSchedulerModal
-                            isOpen={showStatusModal}
-                            onClose={() => setShowStatusModal(false)}
-                            socket={socket}
-                        />
-                    </>
-                )}
-
-                <ServerStatus apiUrl={API_BASE_URL} />
-                {shouldBlockUI ? (
-                    <div className="w-full h-full absolute inset-0 z-10 bg-white">
-                        <QRCodeDisplay
-                            qrCode={qrCode}
-                            error={null}
-                            onLogout={handleLogout}
-                            onResetConnection={handleResetConnection}
-                        />
-                    </div>
-                ) : (
-                    <>
-                        <div className={`${selectedChatId ? 'hidden md:flex' : 'flex'} w-full md:w-auto h-full`}>
-                            <ChatList
-                                chats={chats}
-                                userEmail={user?.email} // Pass user email
-                                selectedChatId={selectedChatId}
-                                onSelectChat={handleSelectChat}
-                                loading={status === ConnectionStatus.CONNECTING && chats.length === 0}
-                                allLabels={labels}
-                                chatLabels={chatLabels}
-                                onToggleLabels={() => setShowLabelManagerModal(true)}
-                                socket={socket}
-                                onOpenApiKeyModal={() => setShowApiKeyModal(true)}
-                                onOpenWebhooksModal={() => setShowWebhooksModal(true)}
-                                onOpenQuickRepliesModal={() => setShowQuickRepliesModal(true)}
-                                onOpenStatusModal={() => setShowStatusModal(true)}
-                                onResetConnection={handleResetConnection}
-                            />
-                        </div>
-
-                        <div className={`${!selectedChatId ? 'hidden md:flex' : 'flex'} flex-1 h-full relative`}>
-                            {selectedChatId && (
-                                <button
-                                    onClick={() => setSelectedChatId(null)}
-                                    className="md:hidden absolute top-3 left-3 z-30 bg-white/90 p-2 rounded-full shadow text-gray-600 border border-gray-200"
-                                >
-                                    ←
-                                </button>
-                            )}
-
-                            <ChatWindow
-                                chat={chats.find(c => c.id === selectedChatId) || null}
-                                messages={selectedChatId ? (messages[selectedChatId] || []) : []}
-                                scheduledMessages={selectedChatId ? (scheduledMessages[selectedChatId] || []) : []}
-                                currentUserId={user.id}
-                                onSendMessage={handleSendMessage}
-                                loadingHistory={loadingHistory}
-                                loadingMore={loadingMore} // Nueva prop
-                                onLoadMore={handleLoadMoreMessages} // Nueva prop
-                                quickReplies={quickReplies}
-                                onToggleSchedule={handleToggleSchedule}
-                                onDeleteSchedule={handleDeleteSchedule}
-
-                                // Nuevas props para Etiquetas
-                                allLabels={labels}
-                                currentChatLabels={selectedChatId ? (chatLabels[selectedChatId] || []) : []}
-                                onToggleLabel={handleToggleLabel}
-                            />
-                        </div>
-                    </>
-                )}
+                    ) : (
+                        <EmptyState />
+                    )}
+                </div>
             </div>
-        </div>
+
+            {/* --- MODALES --- */}
+            {session && (
+                <>
+                    {showApiKeyModal && <ApiKeyManagerModal isOpen={showApiKeyModal} onClose={() => setShowApiKeyModal(false)} session={session} />}
+                    {showWebhooksModal && <WebhookManagerModal isOpen={showWebhooksModal} onClose={() => setShowWebhooksModal(false)} session={session} />}
+                </>
+            )}
+            {showQuickRepliesModal && <QuickReplyManagerModal isOpen={showQuickRepliesModal} onClose={() => setShowQuickRepliesModal(false)} />}
+            {showLabelManagerModal && session && <LabelManagerModal isOpen={showLabelManagerModal} onClose={() => setShowLabelManagerModal(false)} session={session} labels={labels} socket={socket} />}
+            {showStatusModal && <StatusSchedulerModal isOpen={showStatusModal} onClose={() => setShowStatusModal(false)} socket={socket} />}
+        </ConsoleProvider>
     );
 };
 
