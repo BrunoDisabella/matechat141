@@ -11,6 +11,7 @@ import { SocketProvider, useSocket } from './contexts/SocketContext'; // Import 
 import { Settings, WifiOff, ScanLine } from 'lucide-react'; // Iconos añadidos
 
 // Modales
+import { ServerStatus } from './components/ServerStatus';
 import { ApiKeyManagerModal } from './components/modals/ApiKeyManagerModal';
 import { WebhookManagerModal } from './components/modals/WebhookManagerModal';
 import { QuickReplyManagerModal } from './components/modals/QuickReplyManagerModal';
@@ -617,6 +618,7 @@ const MateChatApp: React.FC = () => {
                     </>
                 )}
 
+                <ServerStatus apiUrl={API_BASE_URL} />
                 {shouldBlockUI ? (
                     <div className="w-full h-full absolute inset-0 z-10 bg-white">
                         <QRCodeDisplay

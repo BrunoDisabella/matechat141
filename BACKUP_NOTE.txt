@@ -1,0 +1,8 @@
+Backup created on 2026-01-15.
+File: project_backup.zip
+Location: Root of the project directory.
+
+To restore:
+1. Unzip `project_backup.zip` into a new folder.
+2. Run `npm install` to restore dependencies.
+3. Check `.env` files if they were excluded (they are included in this zip if present in root).

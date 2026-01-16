@@ -5,28 +5,35 @@ import EventEmitter from 'events';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { convertToOgg } from '../utils/audioConverter.js';
+import { convertToOgg } from '../utils/audioConverter.js'; // Will remain JS for now, or TS later
+// import { convertToOgg } from '../utils/audioConverter'; // If we convert utils
 
 const __filename = fileURLToPath(import.meta.url);
-// Adjust to go up one level from src/services to root if needed, or keep local. 
-// Standard wwebjs_auth is usually at root.
 const __dirname = path.dirname(__filename);
+// Root is two levels up from src/services -> src/ -> root. 
+// Actually src/services is level 2. So ../../ is root.
 const PROJECT_ROOT = path.resolve(__dirname, '../../');
 
 class WhatsAppService extends EventEmitter {
+    private clients: Map<string, any>; // Using 'any' for Client temporarily to avoid deep typing friction
+    private readyUserIds: Set<string>;
+
     constructor() {
         super();
         this.clients = new Map();
         this.readyUserIds = new Set();
     }
 
-    isClientReady(userId) {
+    isClientReady(userId: string): boolean {
         return this.readyUserIds.has(userId);
     }
 
-    initializeClient(userId) {
+    initializeClient(userId: string) {
         if (this.clients.has(userId)) {
-            return this.clients.get(userId);
+            const client = this.clients.get(userId);
+            // If client exists but was destroyed/disconnected, we might need to check state.
+            // But usually we delete from map on destroy.
+            return client;
         }
 
         console.log(`[WA-SERVICE] Initializing client for ${userId}...`);
@@ -35,7 +42,7 @@ class WhatsAppService extends EventEmitter {
         const client = new Client({
             authStrategy: new LocalAuth({
                 clientId: userId,
-                dataPath: PROJECT_ROOT // Store auth in root/.wwebjs_auth
+                dataPath: PROJECT_ROOT
             }),
             puppeteer: {
                 headless: true,
@@ -50,18 +57,25 @@ class WhatsAppService extends EventEmitter {
             }
         });
 
-        // Attach Event Listeners
         this._attachEvents(client, userId);
 
-        client.initialize();
+        try {
+            client.initialize().catch((err: any) => {
+                console.error(`[WA-${userId}] Init Error:`, err.message);
+                this.emit('auth_failure', { userId });
+            });
+        } catch (e: any) {
+            console.error(`[WA-${userId}] Sync Init Error:`, e.message);
+        }
+
         this.clients.set(userId, client);
         return client;
     }
 
-    _attachEvents(client, userId) {
-        client.on('qr', (qr) => {
+    private _attachEvents(client: any, userId: string) {
+        client.on('qr', (qr: string) => {
             console.log(`[WA-${userId}] QR Generated`);
-            QRCode.toDataURL(qr, (err, url) => {
+            QRCode.toDataURL(qr, (err: any, url: string) => {
                 if (err) {
                     console.error('QR Generation Error:', err);
                     return;
@@ -78,24 +92,20 @@ class WhatsAppService extends EventEmitter {
 
         client.on('authenticated', () => {
             console.log(`[WA-${userId}] Authenticated`);
-            // Usually 'ready' comes after, but 'authenticated' means we are logged in.
-            // We can treat this as partially ready or wait for full ready.
-            // For UI unblocking, 'ready' is safer for data, but 'authenticated' means QR is gone.
             this.emit('authenticated', { userId });
         });
 
-        client.on('auth_failure', (msg) => {
+        client.on('auth_failure', (msg: string) => {
             console.error(`[WA-${userId}] Auth Failure:`, msg);
             this.readyUserIds.delete(userId);
             this.emit('auth_failure', { userId });
         });
 
-        client.on('message', async (msg) => {
+        client.on('message', async (msg: any) => {
             try {
                 const chat = await msg.getChat();
                 const contact = await msg.getContact();
 
-                // Procesar mensaje para formato frontend
                 const formatted = {
                     id: msg.id.id,
                     body: msg.body,
@@ -113,8 +123,9 @@ class WhatsAppService extends EventEmitter {
             }
         });
 
-        client.on('message_create', async (msg) => {
+        client.on('message_create', async (msg: any) => {
             if (msg.fromMe) {
+                // For outgoing messages, we also want to emit so we can archive them
                 this.emit('message_create', {
                     userId,
                     message: {
@@ -130,47 +141,42 @@ class WhatsAppService extends EventEmitter {
             }
         });
 
-        // Disconnect event?
-        client.on('disconnected', (reason) => {
+        client.on('disconnected', (reason: string) => {
             console.log(`[WA-${userId}] Disconnected:`, reason);
             this.readyUserIds.delete(userId);
             this.emit('disconnected', { userId });
             this.clients.delete(userId);
+
+            // Auto-reconnect not aggressive here, rely on PM2/Process or explicit retry via UI?
+            // "Professional" app should try to reconnect unless explicitly logged out.
+            // But wwebjs usually fails hard on disconnect. 
         });
     }
 
-    getClient(userId) {
+    getClient(userId: string) {
         return this.clients.get(userId);
     }
 
-    async getChats(userId, retries = 3) {
+    async getChats(userId: string, retries = 3): Promise<any[]> {
         const client = this.clients.get(userId);
         if (!client) throw new Error('Client not initialized');
 
-        // Safety check: sometimes client exists but pupPage is not ready
+        // Safety check
         if (!client.pupPage) throw new Error('Client page not ready');
 
-        // Wait for Store to be injected
+        // Wait for Store
         try {
             await client.pupPage.waitForFunction(() => {
+                // @ts-ignore
                 return window.Store && window.Store.Chat && window.Store.Msg;
             }, { timeout: 5000 });
         } catch (e) {
-            console.warn('[WA-SERVICE] Store injection wait timed out, attempting anyway...');
-        }
-
-        // Wait for Store to be injected
-        try {
-            await client.pupPage.waitForFunction(() => {
-                return window.Store && window.Store.Chat && window.Store.Msg;
-            }, { timeout: 5000 });
-        } catch (e) {
-            console.warn('[WA-SERVICE] Store injection wait timed out, attempting anyway...');
+            console.warn('[WA-SERVICE] Store injection wait timed out...');
         }
 
         try {
             const chats = await client.getChats();
-            return chats.map(c => ({
+            return chats.map((c: any) => ({
                 id: c.id._serialized,
                 name: c.name || c.id.user,
                 isGroup: c.isGroup,
@@ -184,23 +190,23 @@ class WhatsAppService extends EventEmitter {
             }));
         } catch (error) {
             if (retries > 0) {
-                console.warn(`[WA-SERVICE] getChats failed, retrying... (${retries} left)`);
+                console.warn(`[WA-SERVICE] getChats failed, retrying... (${retries})`);
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 return this.getChats(userId, retries - 1);
             }
-            console.error('Safe getChats failed after retries:', error);
+            console.error('Safe getChats failed:', error);
             return [];
         }
     }
 
-    async getChatMessages(userId, chatId, limit = 50) {
+    async getChatMessages(userId: string, chatId: string, limit = 50) {
         const client = this.clients.get(userId);
         if (!client) throw new Error('Client not initialized');
 
         const chat = await client.getChatById(chatId);
         const messages = await chat.fetchMessages({ limit });
 
-        return messages.map(m => ({
+        return messages.map((m: any) => ({
             id: m.id.id,
             body: m.body,
             fromMe: m.fromMe,
@@ -210,156 +216,85 @@ class WhatsAppService extends EventEmitter {
         }));
     }
 
-    async getLabels(userId) {
+    async getLabels(userId: string) {
         const client = this.clients.get(userId);
         if (!client) throw new Error('Client not initialized');
         return await client.getLabels();
     }
 
-    async getChat(userId, chatId) {
-        const client = this.clients.get(userId);
-        if (!client) throw new Error('Client not initialized');
-        return await client.getChatById(chatId);
-    }
-
-    async sendMessage(userId, { to, text, media, isVoiceMessage }) {
+    async sendMessage(userId: string, { to, text, media, isVoiceMessage }: any) {
         const client = this.clients.get(userId);
         if (!client) throw new Error('Client not connected');
 
-        // Validation logic
-        // Validation logic
         if (!to) throw new Error('Destination (to) is required');
+        if (!to.includes('@')) to = `${to}@c.us`;
 
-        // Ensure ID formatting
-        if (!to.includes('@')) {
-            // Basic assumption: if no @, it's a number, so append @c.us
-            to = `${to}@c.us`;
-        }
-        // If it has @, we trust it (could be @c.us or @g.us)
-
-        // Wait for Store to be injected (Critical for getChatById to work on fresh start)
+        // Wait for Store injection if needed
         try {
             await client.pupPage.waitForFunction(() => {
-                return window.Store && window.Store.Chat && window.Store.Msg;
+                // @ts-ignore
+                return window.Store && window.Store.Chat;
             }, { timeout: 2000 });
-        } catch (e) {
-            // Continue anyway, maybe it's already cached or ready enough
-        }
+        } catch (e) { }
 
         const chat = await client.getChatById(to);
 
-        // Media Handling
         if (media && media.base64) {
-            console.log('[WA-SERVICE] Sending Media Message');
-            console.log(`[WA-SERVICE] Mime: ${media.mimetype || media.mime}`);
-            console.log(`[WA-SERVICE] Base64 Length: ${media.base64.length}`);
-            console.log(`[WA-SERVICE] Filename: ${media.filename}`);
-
-            // Ensure base64 doesn't have data: prefix and is clean
-            let base64Data = media.base64 || media.data; // Support 'data' key too
-            if (!base64Data) throw new Error('Missing base64 data');
-
+            let base64Data = media.base64 || media.data;
             if (base64Data.startsWith('data:')) {
-                console.log('[WA-SERVICE] Removing data URI prefix from base64');
                 base64Data = base64Data.split(',')[1];
             }
-            // Remove any newlines or whitespace
             base64Data = base64Data.replace(/\s/g, '');
 
-            console.log(`[WA-SERVICE] Base64 Start (First 20 chars): ${base64Data.substring(0, 20)}...`);
-
-            // Normalize filename and mimetype
-            // Handle n8n's 'fileName' (camelCase) vs 'filename' (lowercase)
             let filename = media.filename || media.fileName || media.name;
             let mimetype = (media.mimetype || media.mimeType || media.mime || 'application/octet-stream').toLowerCase();
 
-            console.log(`[WA-SERVICE] Resolved Mime: ${mimetype}`);
-
-            // Ensure filename exists
             if (!filename) {
                 const ext = mimetype.split('/')[1] || 'bin';
                 filename = `file_${Date.now()}.${ext}`;
-                console.log(`[WA-SERVICE] Filename was undefined, generated: ${filename}`);
             }
 
-            console.log(`[WA-SERVICE] Final Filename: ${filename}`);
-
             if (isVoiceMessage) {
-                console.log('[WA-SERVICE] Converting audio to OGG Opus for voice message compatibility...');
                 try {
                     const converted = await convertToOgg(base64Data, mimetype);
                     base64Data = converted.base64;
                     mimetype = converted.mimetype;
                     filename = converted.filename;
-                    console.log(`[WA-SERVICE] Audio converted successfully: ${filename} (${mimetype})`);
                 } catch (convErr) {
-                    console.error('[WA-SERVICE] Audio conversion failed, attempting to send original:', convErr);
+                    console.error('[WA-SERVICE] Audio conversion failed:', convErr);
                 }
             }
 
             const msgMedia = new MessageMedia(mimetype, base64Data, filename);
-
-            const options = { sendSeen: false };
-            if (isVoiceMessage) {
-                options.sendAudioAsVoice = true;
-                console.log('[WA-SERVICE] Sending as Voice Message');
-            }
+            const options: any = { sendSeen: false };
+            if (isVoiceMessage) options.sendAudioAsVoice = true;
             if (text) options.caption = text;
 
-            try {
-                const result = await chat.sendMessage(msgMedia, options);
-                console.log('[WA-SERVICE] Message Sent Successfully:', result.id._serialized);
-                return result;
-            } catch (mediaError) {
-                console.error('[WA-SERVICE] Error sending media:', mediaError);
-                throw mediaError;
-            }
+            return await chat.sendMessage(msgMedia, options);
         } else if (text) {
-            console.log('[WA-SERVICE] Sending Text Message');
             return await chat.sendMessage(text, { sendSeen: false });
         }
     }
 
-    async logout(userId) {
+    async logout(userId: string) {
         const client = this.clients.get(userId);
         if (client) {
             await client.destroy();
             this.clients.delete(userId);
         }
 
-        // Clean up session files
-        // Uses PROJECT_ROOT/.wwebjs_auth/session-{clientId} usually if clientId is set
-        // Or .wwebjs_auth if default.
-        // Since we used LocalAuth with clientId, it creates .wwebjs_auth/session-{userId}
-
         const sessionDir = path.join(PROJECT_ROOT, '.wwebjs_auth', `session-${userId}`);
-        const legacySessionDir = path.join(PROJECT_ROOT, '.wwebjs_auth'); // For backward compatibility if clean root needed
-
-        console.log(`[LOGOUT] Removing session at ${sessionDir}`);
-
         try {
             if (fs.existsSync(sessionDir)) {
                 fs.rmSync(sessionDir, { recursive: true, force: true });
-            }
-            // Also check root auth if it was created without clientId specific folder previously
-            // But we should be careful not to delete other sessions if we move to multi-tenant.
-            // For now, assume single user 'default-user'.
-            if (userId === 'default-user' && fs.existsSync(legacySessionDir)) {
-                // Check if it has session- folder inside.
-                // Actually LocalAuth creates .wwebjs_auth/session-default-user
             }
         } catch (e) {
             console.error('Error removing session files:', e);
         }
 
-        // Re-init
         this.initializeClient(userId);
     }
 
-    /**
-     * Scan .wwebjs_auth directory for existing sessions and restore them
-     * This allows the bot to start working in background without browser interaction
-     */
     restoreSessions() {
         const authPath = path.join(PROJECT_ROOT, '.wwebjs_auth');
         if (!fs.existsSync(authPath)) {
