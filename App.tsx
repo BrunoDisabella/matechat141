@@ -147,8 +147,9 @@ const MateChatApp: React.FC = () => {
 
     useEffect(() => {
         if (user) {
-            fetchChatsFromSupabase();
-            fetchLabelsFromSupabase();
+            // SIMPLIFICATION: We rely on Socket data only to prevent "ghost data" from previous sessions.
+            // fetchChatsFromSupabase();
+            // fetchLabelsFromSupabase(); 
         }
     }, [user, fetchChatsFromSupabase, fetchLabelsFromSupabase]);
 
@@ -314,7 +315,8 @@ const MateChatApp: React.FC = () => {
             if (status === ConnectionStatus.CONNECTED) {
                 socket?.emit('select-chat', chatId);
             } else {
-                fetchMessagesFromSupabase(chatId);
+                // SIMPLIFICATION: Disable offline DB fetch
+                // fetchMessagesFromSupabase(chatId);
             }
         }
         if (status === ConnectionStatus.CONNECTED) {
@@ -337,38 +339,30 @@ const MateChatApp: React.FC = () => {
                 beforeId: oldestMessage.id
             });
         } else {
-            logEvent('Chat', 'info', 'Pidiendo más mensajes a Supabase (Offline)...');
-            try {
-                const { data: dbMessages } = await supabase
-                    .from('messages')
-                    .select('*')
-                    .eq('chat_id', selectedChatId)
-                    .eq('user_id', user.id)
-                    .lt('timestamp', new Date(oldestMessage.timestamp * 1000).toISOString())
-                    .order('timestamp', { ascending: false })
-                    .limit(20);
+        } else {
+            // SIMPLIFICATION: Disable offline fetch
+            /*
+           logEvent('Chat', 'info', 'Pidiendo más mensajes a Supabase (Offline)...');
+           try {
+               const { data: dbMessages } = await supabase
+                   .from('messages')
+                   .select('*')
+                   .eq('chat_id', selectedChatId)
+                   .eq('user_id', user.id)
+                   .lt('timestamp', new Date(oldestMessage.timestamp * 1000).toISOString())
+                   .order('timestamp', { ascending: false })
+                   .limit(20);
 
-                if (dbMessages && dbMessages.length > 0) {
-                    const formattedMessages: Message[] = dbMessages.reverse().map(m => ({
-                        id: m.id,
-                        body: m.body,
-                        fromMe: m.from_me,
-                        timestamp: new Date(m.timestamp).getTime() / 1000,
-                        type: m.type,
-                        hasMedia: m.has_media,
-                        media: undefined
-                    }));
-
-                    setMessages(prev => {
-                        const chatMsgs = prev[selectedChatId] || [];
-                        return { ...prev, [selectedChatId]: [...formattedMessages, ...chatMsgs] };
-                    });
-                }
-            } catch (e) {
-                console.error(e);
-            } finally {
-                setLoadingMore(false);
-            }
+               if (dbMessages && dbMessages.length > 0) {
+                  // ... logic ...
+               }
+           } catch (e) {
+               console.error(e);
+           } finally {
+               setLoadingMore(false);
+           }
+           */
+            setLoadingMore(false);
         }
     }, [selectedChatId, messages, loadingMore, status, socket, user, logEvent]);
 
