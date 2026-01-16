@@ -219,7 +219,10 @@ export const ChatList: React.FC<ChatListProps> = ({
                     <button title="Settings" onClick={onOpenApiKeyModal} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all">
                         <MoreVertical className="w-5 h-5" />
                     </button>
-                    {status === 'connected' && (
+                    <button title="Webhooks" onClick={onOpenWebhooksModal} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">
+                        <Webhook className="w-5 h-5" />
+                    </button>
+                    {status === 'CONNECTED' && (
                         <button title="Eliminar Conexión (Reset)" onClick={() => {
                             if (confirm('¿Seguro que quieres eliminar la conexión de WhatsApp? Tendrás que escanear el QR de nuevo.')) {
                                 onResetConnection();
