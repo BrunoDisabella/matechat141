@@ -45,9 +45,8 @@ class WhatsAppService extends EventEmitter {
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
-                    '--no-zygote',
-                    '--single-process',
                     '--disable-gpu'
+                    // Removed --single-process and --no-zygote as they cause instability
                 ]
             }
         });
@@ -64,6 +63,30 @@ class WhatsAppService extends EventEmitter {
         }
 
         this.clients.set(userId, client);
+
+        // Keep Alive / Heartbeat
+        // Remove existing interval if any to avoid duplicates (though logically we create new client)
+        if ((client as any).keepAliveInterval) clearInterval((client as any).keepAliveInterval);
+
+        (client as any).keepAliveInterval = setInterval(async () => {
+            try {
+                const state = await client.getState();
+                console.log(`[WA-${userId}] Heartbeat State: ${state}`);
+                if (state === 'DISCONNECTED' || state === null) {
+                    console.log(`[WA-${userId}] Detected disconnection, re-initializing...`);
+                    clearInterval((client as any).keepAliveInterval);
+                    this.clients.delete(userId);
+                    this.initializeClient(userId);
+                }
+            } catch (e) {
+                // If checking state fails, it might be crashed
+                console.error(`[WA-${userId}] Heartbeat failed, assuming crash. Restarting...`);
+                clearInterval((client as any).keepAliveInterval);
+                this.clients.delete(userId);
+                this.initializeClient(userId);
+            }
+        }, 5 * 60 * 1000); // Check every 5 minutes
+
         return client;
     }
 

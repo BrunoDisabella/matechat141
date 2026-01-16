@@ -90,6 +90,7 @@ class WebhookDispatcher {
                 data: payload,
                 timestamp: new Date().toISOString()
             }, { timeout: 10000 });
+            console.log(`[WEBHOOK] Sent event to ${hook.url}`);
         } catch (e: any) {
             const status = e.response ? e.response.status : 'N/A';
             if (e.code !== 'ECONNABORTED') {
