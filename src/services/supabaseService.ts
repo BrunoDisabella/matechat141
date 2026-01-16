@@ -111,4 +111,42 @@ class SupabaseService {
     }
 }
 
+// --- Queue Methods (Enterprise) ---
+
+subscribeToQueue(callback: (payload: any) => void) {
+    if (!this.client) return;
+    console.log('[SUPABASE] Subscribing to message_queue...');
+    this.client
+        .channel('public:message_queue')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_queue' }, callback)
+        .subscribe();
+}
+
+    async getPendingMessages() {
+    if (!this.client) return [];
+    const { data, error } = await this.client
+        .from('message_queue')
+        .select('*')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true });
+
+    if (error) {
+        console.error('[DB] Error fetching pending queue:', error.message);
+        return [];
+    }
+    return data;
+}
+
+    async updateQueueStatus(id: number, status: string, errorMsg ?: string) {
+    if (!this.client) return;
+    const update: any = { status, processed_at: new Date().toISOString() };
+    if (errorMsg) update.error_message = errorMsg;
+
+    await this.client
+        .from('message_queue')
+        .update(update)
+        .eq('id', id);
+}
+}
+
 export default new SupabaseService();

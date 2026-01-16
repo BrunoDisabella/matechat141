@@ -157,6 +157,10 @@ class WhatsAppService extends EventEmitter {
         return this.clients.get(userId);
     }
 
+    getConnectedUsers(): string[] {
+        return Array.from(this.readyUserIds);
+    }
+
     async getChats(userId: string, retries = 3): Promise<any[]> {
         const client = this.clients.get(userId);
         if (!client) throw new Error('Client not initialized');
