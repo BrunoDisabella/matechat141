@@ -14,6 +14,10 @@ class SupabaseService {
         }
     }
 
+    isConfigured(): boolean {
+        return !!this.client;
+    }
+
     async getUser(token: string) {
         if (!this.client) return null;
         const { data: { user }, error } = await this.client.auth.getUser(token);
@@ -69,6 +73,87 @@ class SupabaseService {
                 last_message_body: message.body,
                 last_message_timestamp: new Date(message.timestamp * 1000).toISOString()
             }).match({ id: message.chatId, user_id: userId });
+        }
+    }
+
+    // --- Webhooks & API Config ---
+
+    async getWebhooks(userId: string) {
+        if (!this.client) return [];
+        const { data, error } = await this.client
+            .from('webhooks')
+            .select('*')
+            .eq('user_id', userId);
+
+        if (error) {
+            console.error('Error fetching webhooks:', error);
+            return [];
+        }
+        return data.map((w: any) => ({
+            url: w.url,
+            onMessageReceived: w.on_message_received,
+            onMessageSent: w.on_message_sent
+        }));
+    }
+
+    async addWebhook(userId: string, webhook: { url: string, onMessageReceived: boolean, onMessageSent: boolean }) {
+        if (!this.client) return;
+        const { error } = await this.client
+            .from('webhooks')
+            .insert({
+                user_id: userId,
+                url: webhook.url,
+                on_message_received: webhook.onMessageReceived,
+                on_message_sent: webhook.onMessageSent,
+                created_at: new Date().toISOString()
+            });
+
+        if (error) throw new Error(error.message);
+    }
+
+    async deleteWebhook(userId: string, url: string) {
+        if (!this.client) return;
+        const { error } = await this.client
+            .from('webhooks')
+            .delete()
+            .match({ user_id: userId, url });
+
+        if (error) throw new Error(error.message);
+    }
+
+    async getApiKeyConfig(userId: string) {
+        if (!this.client) return null;
+        const { data, error } = await this.client
+            .from('api_config')
+            .select('api_key')
+            .eq('user_id', userId)
+            .maybeSingle();
+
+        if (error) return null;
+        return data ? data.api_key : null;
+    }
+
+    async updateApiKeyConfig(userId: string, apiKey: string) {
+        if (!this.client) return;
+
+        // Check if config exists
+        const exists = await this.getApiKeyConfig(userId);
+
+        if (exists !== null) {
+            // Update
+            await this.client
+                .from('api_config')
+                .update({ api_key: apiKey, updated_at: new Date().toISOString() })
+                .eq('user_id', userId);
+        } else {
+            // Insert
+            await this.client
+                .from('api_config')
+                .insert({
+                    user_id: userId,
+                    api_key: apiKey,
+                    created_at: new Date().toISOString()
+                });
         }
     }
 
