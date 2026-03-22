@@ -9,6 +9,7 @@ import whatsappService from './services/whatsappService.js';
 import socketService from './services/socketService.js';
 import webhookDispatcher from './services/webhookDispatcher.js';
 import queueProcessor from './services/queueProcessor.js';
+import schedulerService from './services/schedulerService.js';
 
 // Setup paths
 const __filename = fileURLToPath(import.meta.url);
@@ -45,6 +46,7 @@ socketService.initialize(server);
 whatsappService.restoreSessions();
 webhookDispatcher.initialize();
 queueProcessor.start();
+schedulerService.start(); // ✅ Iniciar el scheduler de mensajes programados
 
 // Start Server
 server.listen(config.port, () => {

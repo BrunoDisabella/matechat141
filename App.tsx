@@ -493,7 +493,7 @@ const MateChatApp: React.FC = () => {
                         onShowQuickRepliesModal={() => setShowQuickRepliesModal(true)}
                         onOpenStatusModal={() => setShowStatusModal(true)}
                         onResetConnection={handleResetConnection}
-                        loading={status === ConnectionStatus.CONNECTING && chats.length === 0}
+                        loading={(status === ConnectionStatus.CONNECTING || status === ConnectionStatus.DISCONNECTED) && chats.length === 0}
                         allLabels={labels} // Legacy prop name fix
                         userEmail={user.email}
                         onOpenApiKeyModal={() => setShowApiKeyModal(true)} // Prop duplication fix if needed but handled above

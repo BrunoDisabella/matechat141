@@ -3,6 +3,7 @@ import { authenticateApiKeyOnly, authenticateSession } from '../middlewares/auth
 import * as whatsappController from '../controllers/whatsappController.js';
 import * as webhookController from '../controllers/webhookController.js';
 import * as configController from '../controllers/configController.js';
+import * as schedulerController from '../controllers/schedulerController.js';
 
 const router = express.Router();
 
@@ -26,9 +27,16 @@ router.use(authenticateApiKeyOnly);
 
 // WhatsApp
 router.post('/send-message', whatsappController.sendMessage);
-router.get('/labels', whatsappController.getLabels); // Podría requerirse en ambos lados, pero n8n suele usar esto
+router.get('/labels', whatsappController.getLabels);
 router.post('/labels/assign', whatsappController.assignLabel);
 router.post('/labels/remove', whatsappController.removeLabel);
-router.post('/logout', whatsappController.logout); // Logout via API Key? Maybe dangerous, usually via Socket/Frontend
+router.post('/logout', whatsappController.logout);
+
+// Scheduled Messages (Mensajes Programados)
+router.post('/schedule-message', schedulerController.createScheduledMessage);
+router.get('/scheduled-messages', schedulerController.getScheduledMessages);
+router.delete('/scheduled-messages/:id', schedulerController.deleteScheduledMessage);
+router.patch('/scheduled-messages/:id/toggle', schedulerController.toggleScheduledMessage);
 
 export default router;
+

@@ -228,6 +228,125 @@ class SupabaseService {
             console.error('[SUPABASE] Error clearing user data:', e.message);
         }
     }
+
+    // --- Scheduled Messages Methods ---
+
+    async getScheduledMessages(beforeTime: string) {
+        if (!this.client) return [];
+        const { data, error } = await this.client
+            .from('scheduled_messages')
+            .select('*')
+            .eq('status', 'pending')
+            .eq('is_active', true)
+            .lte('scheduled_time', beforeTime)
+            .order('scheduled_time', { ascending: true });
+
+        if (error) {
+            console.error('[SUPABASE] Error fetching scheduled messages:', error.message);
+            return [];
+        }
+        return data || [];
+    }
+
+    async getScheduledMessagesForUser(userId: string, chatId?: string) {
+        if (!this.client) return [];
+        let query = this.client
+            .from('scheduled_messages')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('status', 'pending')
+            .order('scheduled_time', { ascending: true });
+
+        if (chatId) {
+            query = query.eq('chat_id', chatId);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+            console.error('[SUPABASE] Error fetching user scheduled messages:', error.message);
+            return [];
+        }
+        return data || [];
+    }
+
+    async createScheduledMessage(data: {
+        userId: string;
+        chatId: string;
+        body: string;
+        scheduledTime: string;
+    }) {
+        if (!this.client) return null;
+
+        const { data: result, error } = await this.client
+            .from('scheduled_messages')
+            .insert({
+                user_id: data.userId,
+                chat_id: data.chatId,
+                body: data.body,
+                scheduled_time: data.scheduledTime,
+                status: 'pending',
+                is_active: true,
+                created_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+        if (error) {
+            console.error('[SUPABASE] Error creating scheduled message:', error.message);
+            throw new Error(error.message);
+        }
+        return result;
+    }
+
+    async updateScheduledMessageStatus(id: string, status: string, errorMessage?: string) {
+        if (!this.client) return;
+
+        const updatePayload: any = {
+            status,
+            updated_at: new Date().toISOString()
+        };
+        if (errorMessage) updatePayload.error_message = errorMessage;
+
+        const { error } = await this.client
+            .from('scheduled_messages')
+            .update(updatePayload)
+            .eq('id', id);
+
+        if (error) {
+            console.error('[SUPABASE] Error updating scheduled message status:', error.message);
+        }
+    }
+
+    async toggleScheduledMessage(id: string, userId: string, isActive: boolean) {
+        if (!this.client) return;
+
+        const { error } = await this.client
+            .from('scheduled_messages')
+            .update({ is_active: isActive })
+            .eq('id', id)
+            .eq('user_id', userId);
+
+        if (error) {
+            console.error('[SUPABASE] Error toggling scheduled message:', error.message);
+            throw new Error(error.message);
+        }
+    }
+
+    async deleteScheduledMessage(id: string, userId: string) {
+        if (!this.client) return;
+
+        const { error } = await this.client
+            .from('scheduled_messages')
+            .delete()
+            .eq('id', id)
+            .eq('user_id', userId);
+
+        if (error) {
+            console.error('[SUPABASE] Error deleting scheduled message:', error.message);
+            throw new Error(error.message);
+        }
+    }
 }
 
 export default new SupabaseService();
